@@ -114,7 +114,10 @@ async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
 
     while True:
         response = await client.responses.create(
-            input=history, model="gpt-5-mini", tools=tools, **agent.get("kwargs", {})
+            input=history,
+            model=agent.get("model", "gpt-5-mini"),
+            tools=tools,
+            **agent.get("kwargs", {}),
         )
 
         history += response.output
