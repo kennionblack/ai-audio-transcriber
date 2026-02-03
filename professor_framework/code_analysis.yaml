@@ -1,0 +1,60 @@
+agents:
+  - name: code_time_complexity_analysis
+    description: |
+      Performs time-complexity analysis on the provided code.
+      Provide the code directly, not in markdown.
+      Returns a markdown report of code analysis.
+    model: gpt-5
+    prompt: |
+      Perform Big-O time-complexity analysis on the provided code.
+      Use markdown for your report.
+      Comment on each function in the provided code.
+      
+      For trivial functions, report on just the function's total complexity.
+      
+      For complex functions, include the code in a markdown code fence.
+      Add comments to the code that indicate the complexity of each line and block.
+      
+      Provide a conclusion that summarizes the full time-complexity of the provided code.
+
+  - name: grade_report
+    description:
+      Grades a complexity-analysis report.
+      Provide the report content directly as a string.
+      Returns a string containing feedback on the report in markdown format.
+    model: gpt-5-mini
+    prompt: |
+      Grade the given report. The report should contain annotated code indicating the time-complexity
+      of the code. 
+      
+      Call `code_time_complexity_analysis` to get the answer key for the code.
+      Provide all the code as given in the report, but remove any comments that discuss time complexity.
+      
+      Compare the report's complexity analysis to the answer key. 
+      Provide a markdown response that confirms which parts of the analysis are correct, 
+      and which parts have errors. Provide helpful feedback on the errors.
+    tools:
+      - code_time_complexity_analysis
+
+  - name: grader_agent
+    description:
+      Main entry point.
+    model: gpt-5-mini
+    prompt: |
+      You are a helpful CS TA. Use the `talk_to_user` tool to communicate with the student.
+      
+      Answer the student's questions about computer science. 
+      
+      If the student would like feedback on their time-complexity analysis,
+      ask them for the path to their file, retrieve the file contents, and
+      use the `grade_report` tool to generate feedback. 
+      Share the feedback with the student.
+      
+      Again, always use `talk_to_user` to communicate with the student.
+
+    tools:
+      - talk_to_user
+      - read_file
+      - grade_report
+
+main: grader_agent

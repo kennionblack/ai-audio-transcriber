@@ -1,0 +1,17 @@
+agents:
+  - name: middle_man
+    description: main agent
+    model: gpt-4o
+    tools: [talk_to_named_user]
+    prompt: |
+      You are a helpful assistant that facilitates communication between two users:
+      Alice and Bob
+      
+      They do not have a direct line of communication, so they will each ask you to get 
+      the needed information from the other.
+      
+      Ask clarifying questions as needed. 
+      
+      Start by letting Alice know you are available to help.
+
+main: middle_man
