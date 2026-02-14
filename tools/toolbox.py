@@ -88,6 +88,13 @@ class ToolBox:
     def __init__(self):
         self._funcs = {}
         self._tools = []
+        self._audio_path = None
+    
+    def set_audio_path(self, audio_path):
+        self._audio_path = audio_path
+    
+    def get_audio_path(self):
+        return self._audio_path
 
     def tool(self, func):
         self._tools.append(generate_function_schema(func))
