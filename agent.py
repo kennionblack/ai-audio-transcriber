@@ -17,6 +17,15 @@ load_dotenv()
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
 
+def get_audio_file_path() -> str:
+    """Get the audio file path that was passed as a command-line argument.
+    
+    Returns the absolute path to the audio file that needs to be processed.
+    """
+    audio_path = tool_box.get_audio_path()
+    return audio_path if audio_path else "No audio file path provided"
+
+tool_box.tool(get_audio_file_path)
 tools.register_all_tools(tool_box)
 
 def add_agent_tools(agents: dict[str, Agent], tool_box: ToolBox):
@@ -69,9 +78,26 @@ async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
             else:
                 print(item, file=sys.stderr)
 
+def validate_audio_path(path: Path) -> bool:
+    if not path.exists():
+        print(f"Error: Path '{path}' does not exist")
+        return False
+    if not path.is_file():
+        print(f"Error: Path '{path}' is not a file")
+        return False
+    # We can decide the specific supported audio formats later but these seem like reasonable defaults
+    if path.suffix.lower() not in [".mp3", ".wav", ".m4a", ".flac"]:
+        print(f"Error: Unsupported audio format '{path.suffix}'")
+        return False
+    return True
 
-def main(config_file: Path):
-    config = load_config(config_file)
+def main(audio_path: Path):
+    if not validate_audio_path(audio_path):
+        sys.exit(1)
+    
+    tool_box.set_audio_path(str(audio_path))
+    
+    config = load_config(Path("agents.yaml"))
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
     main_agent = config["main"]
@@ -80,9 +106,7 @@ def main(config_file: Path):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        if not Path("agents.yaml").exists():
-            print("Usage: python agent.py [config_file]")
-            sys.exit(1)
-        main(Path("agents.yaml"))
-    else:
-        main(Path(sys.argv[1]))
+        print("Usage: python agent.py [audio_file_path]")
+        sys.exit(1)
+    
+    main(Path(sys.argv[1]))
