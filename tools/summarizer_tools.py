@@ -1,6 +1,5 @@
 from collections import Counter
 import re
-from tools import ToolBox
 
 # This is kind of a really poor approach but I wanted to try something without just feeding the text back to another AI. 
 
