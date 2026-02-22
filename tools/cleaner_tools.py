@@ -3,6 +3,9 @@ import os
 import re
 from typing import Any
 from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # We split filler words into 2 groups:
 # 1) strict fillers: almost always noise ("um", "uh"), so we remove them
@@ -25,6 +28,21 @@ _SOFT_FILLERS = [
     r"\bsort of\b",
     r"\bkind of\b",
 ]
+
+
+def _to_bool(value: Any, default: bool = False) -> bool:
+    """Convert common true/false inputs into a real bool."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+    return bool(value)
 
 
 def _clean_with_openai(transcript_text: str, mode: str, aggressiveness: str) -> tuple[str, str | None]:
@@ -261,14 +279,26 @@ def remove_filler_words(text: str) -> str:
         return ""
 
     payload, _raw = _parse_input_payload(text)
+    default_use_openai = _to_bool(os.getenv("CLEANER_USE_OPENAI_DEFAULT", "true"), default=True)
 
     # Backward-compatible path: plain text in, plain text out.
     if payload is None:
-        cleaned_text, _stats, _warnings = _clean_plain_transcript(
-            text=text,
-            mode="cleaned",
-            aggressiveness="balanced",
-        )
+        if default_use_openai:
+            llm_cleaned, llm_error = _clean_with_openai(text, "cleaned", "balanced")
+            if llm_error:
+                cleaned_text, _stats, _warnings = _clean_plain_transcript(
+                    text=text,
+                    mode="cleaned",
+                    aggressiveness="balanced",
+                )
+            else:
+                cleaned_text = llm_cleaned
+        else:
+            cleaned_text, _stats, _warnings = _clean_plain_transcript(
+                text=text,
+                mode="cleaned",
+                aggressiveness="balanced",
+            )
         return cleaned_text
 
     mode = str(payload.get("mode", "cleaned")).lower()
@@ -278,7 +308,7 @@ def remove_filler_words(text: str) -> str:
     aggressiveness = str(payload.get("aggressiveness", "balanced")).lower()
     if aggressiveness not in {"balanced", "aggressive"}:
         aggressiveness = "balanced"
-    use_openai = bool(payload.get("use_openai", False))
+    use_openai = _to_bool(payload.get("use_openai", default_use_openai), default=default_use_openai)
 
     metadata = payload.get("metadata", {})
     transcript = payload.get("transcript")

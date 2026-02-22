@@ -91,7 +91,7 @@ agents:
       - Prefer passing a JSON payload to remove_filler_words() with:
         {"transcript": "...", "mode": "cleaned|verbatim", "aggressiveness": "balanced|aggressive", "use_openai": true|false, "metadata": {...}}
         or {"segments": [...], "mode": "...", "aggressiveness": "...", "use_openai": true|false}
-      - Use "use_openai": true when API-based cleanup is requested or available
+      - Default to "use_openai": true (OpenAI API cleanup) unless user asks for local-only cleaning
       - Use "verbatim" mode when user asks to preserve disfluencies exactly
       - Use "balanced" aggressiveness by default; use "aggressive" only when user asks for stronger cleanup
       - Add proper punctuation and capitalization
