@@ -79,12 +79,14 @@ agents:
       - Pass the cleaned text to the summarizer agent
 
       Available tools:
-      - remove_filler_words(text: str) -> str: Remove filler words from the text.
+      - remove_filler_words(text: str) -> str: Clean transcript text through the OpenAI API. Expects a JSON payload with a transcript field.
       - summarizer(message: str) -> str: Send the cleaned transcription for summarization.
       - transcriber(message: str) -> str: Request clarification or re-transcription if needed.
 
       Cleaning guidelines:
-      - Use remove_filler_words() to clean filler words (um, uh, like) unless verbatim mode is requested
+      - Prefer passing a JSON payload to remove_filler_words() with:
+        {"transcript": "...", "metadata": {...}}
+      - This cleaner always uses the OpenAI API (no local regex fallback)
       - Add proper punctuation and capitalization
       - Fix obvious grammar errors
       - Maintain speaker labels if present
