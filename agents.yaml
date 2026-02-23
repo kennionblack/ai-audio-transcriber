@@ -145,7 +145,6 @@ agents:
     tools:
       - get_n_most_common_words
       - quality_assurance
-      - cleaner
   - name: quality_assurance
     description: |
       Ensures the final output meets the required standards of accuracy, clarity, and completeness. 
