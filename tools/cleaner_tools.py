@@ -53,19 +53,19 @@ def _clean_with_openai(transcript_text: str) -> tuple[str, str | None]:
         return transcript_text, f"OpenAI cleaner failed ({exc})."
 
 
-def _parse_input_payload(text: str) -> tuple[dict[str, Any] | None, str]:
-    """Try parsing input as JSON; if parsing fails, treat input as plain text."""
+def _parse_input_payload(text: str) -> dict[str, Any] | None:
+    """Parse JSON object payload. Returns None for invalid/non-object JSON."""
     raw = (text or "").strip()
     if not raw:
-        return None, ""
+        return None
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        return None, raw
+        return None
 
     if isinstance(parsed, dict):
-        return parsed, raw
-    return None, raw
+        return parsed
+    return None
 
 
 def remove_filler_words(text: str) -> str:
@@ -73,7 +73,7 @@ def remove_filler_words(text: str) -> str:
     if not text or not text.strip():
         return ""
 
-    payload, _raw = _parse_input_payload(text)
+    payload = _parse_input_payload(text)
 
     # JSON-only input path.
     if payload is None:
