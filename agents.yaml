@@ -83,17 +83,14 @@ agents:
       - Pass the cleaned text to the summarizer agent
       
       Available tools:
-      - remove_filler_words(text: str) -> str: Clean transcript text through the OpenAI API. Accepts plain text or a JSON payload with mode/aggressiveness and optional segments.
+      - remove_filler_words(text: str) -> str: Clean transcript text through the OpenAI API. Expects a JSON payload with a transcript field.
       - summarizer(message: str) -> str: Send the cleaned transcription for summarization.
       - transcriber(message: str) -> str: Request clarification or re-transcription if needed.
       
       Cleaning guidelines:
       - Prefer passing a JSON payload to remove_filler_words() with:
-        {"transcript": "...", "mode": "cleaned|verbatim", "aggressiveness": "balanced|aggressive", "metadata": {...}}
-        or {"segments": [...], "mode": "...", "aggressiveness": "..."}
+        {"transcript": "...", "metadata": {...}}
       - This cleaner always uses the OpenAI API (no local regex fallback)
-      - Use "verbatim" mode when user asks to preserve disfluencies exactly
-      - Use "balanced" aggressiveness by default; use "aggressive" only when user asks for stronger cleanup
       - Add proper punctuation and capitalization
       - Fix obvious grammar errors
       - Maintain speaker labels if present
