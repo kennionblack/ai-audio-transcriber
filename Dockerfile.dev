@@ -1,0 +1,38 @@
+FROM python:3.12
+
+# --- user setup ---
+ARG USERNAME=vscode
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME
+
+# --- install dev tools + bash + other important tools ---
+RUN apt-get update && apt-get install -y \
+    bash \
+    bash-completion \
+    ffmpeg \
+    git \
+    vim \
+    less \
+    curl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- working directory ---
+WORKDIR /workspace
+
+# --- dependencies ---
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- switch to non-root user ---
+USER $USERNAME
+
+# --- make bash default shell ---
+ENV SHELL=/bin/bash
+ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
+
+# --- keep container alive for dev ---
+CMD ["bash"]

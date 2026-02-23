@@ -1,0 +1,12 @@
+{
+  "name": "ai-audio-transcriber",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-python.python", "ms-python.vscode-pylance"]
+    }
+  }
+}
