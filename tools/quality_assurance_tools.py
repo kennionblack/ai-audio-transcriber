@@ -11,6 +11,7 @@ from typing import Any
 
 
 def _strip_code_fences(text: str) -> str:
+    """Return raw content when input is wrapped in Markdown code fences."""
     fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if fence_match:
         return fence_match.group(1).strip()
@@ -18,6 +19,7 @@ def _strip_code_fences(text: str) -> str:
 
 
 def _extract_json_candidate(text: str) -> str:
+    """Extract the most likely JSON slice from mixed/plain text input."""
     cleaned = _strip_code_fences(text)
     if not cleaned:
         return ""
@@ -43,7 +45,9 @@ def _extract_json_candidate(text: str) -> str:
 
 
 def _validate_segments(segments: list[Any]) -> list[str]:
+    """Validate `segments` items and return collected schema/ordering errors."""
     errors: list[str] = []
+    # Cap validation to a sample size for predictable cost on very large payloads.
     for index, segment in enumerate(segments[:50]):
         if not isinstance(segment, dict):
             errors.append(f"segments[{index}] must be an object")
@@ -73,7 +77,11 @@ def _validate_segments(segments: list[Any]) -> list[str]:
 
 def validate_json_structure(transcription: str) -> str:
     """
-    Validate the JSON structure of the transcription.
+    Validate the transcription payload and return a human-readable QA status.
+
+    The validator accepts raw JSON or JSON embedded in text/Markdown, enforces
+    top-level shape constraints, and reports either errors or non-blocking
+    warnings for missing expected content keys.
     """
     print("---- Validating JSON structure ----")
 
