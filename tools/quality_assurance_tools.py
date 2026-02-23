@@ -101,11 +101,12 @@ def validate_json_structure(transcription: str) -> str:
         return "Invalid JSON: top-level must be an object"
 
     errors: list[str] = []
-    warnings: list[str] = []
 
-    expected_any = {"transcription", "summary", "segments", "text"}
-    if not any(key in payload for key in expected_any):
-        warnings.append("missing expected keys: transcription/summary/segments/text")
+    if "transcription" not in payload:
+        errors.append("missing required field: transcription")
+
+    if "summary" not in payload:
+        errors.append("missing required field: summary")
 
     if "transcription" in payload and not isinstance(payload["transcription"], str):
         errors.append("transcription must be a string")
@@ -130,8 +131,5 @@ def validate_json_structure(transcription: str) -> str:
 
     if errors:
         return "Invalid JSON structure: " + "; ".join(errors)
-
-    if warnings:
-        return "JSON structure is valid with warnings: " + "; ".join(warnings)
 
     return "JSON structure is valid"
