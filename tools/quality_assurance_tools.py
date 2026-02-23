@@ -12,6 +12,7 @@ from typing import Any
 
 def _strip_code_fences(text: str) -> str:
     """Return raw content when input is wrapped in Markdown code fences."""
+    # This handles cases where the JSON is embedded in a code block, which is common in LLM outputs. It looks for ```json or ``` fences and extracts the content within them, ignoring any leading/trailing whitespace.
     fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if fence_match:
         return fence_match.group(1).strip()
@@ -20,6 +21,7 @@ def _strip_code_fences(text: str) -> str:
 
 def _extract_json_candidate(text: str) -> str:
     """Extract the most likely JSON slice from mixed/plain text input."""
+    # This function first removes any Markdown code fences to get cleaner content. Then it looks for the earliest occurrence of either "{" or "[" to find the start of a JSON object or array, and the latest occurrence of "}" or "]" to find the end. If both are found and properly ordered, it returns the substring between them as the JSON candidate. If not, it returns the cleaned text as-is, which may still be valid JSON if it was not wrapped in code fences.
     cleaned = _strip_code_fences(text)
     if not cleaned:
         return ""
@@ -47,7 +49,8 @@ def _extract_json_candidate(text: str) -> str:
 def _validate_segments(segments: list[Any]) -> list[str]:
     """Validate `segments` items and return collected schema/ordering errors."""
     errors: list[str] = []
-    # Cap validation to a sample size for predictable cost on very large payloads.
+    # Cap validation to a sample size for predictable cost on very large payloads. 
+    # This is a heuristic and can be adjusted based on expected typical segment counts and performance needs.
     for index, segment in enumerate(segments[:50]):
         if not isinstance(segment, dict):
             errors.append(f"segments[{index}] must be an object")
@@ -83,6 +86,7 @@ def validate_json_structure(transcription: str) -> str:
     top-level shape constraints, and reports either errors or non-blocking
     warnings for missing expected content keys.
     """
+    # Validate the JSON structure of the transcription, which may be raw JSON or contain JSON embedded in text/Markdown. The function extracts the most likely JSON candidate, attempts to parse it, and checks for required fields and correct types. It returns a human-readable status indicating whether the structure is valid or describing any issues found.
     print("---- Validating JSON structure ----")
 
     if not transcription or not transcription.strip():
