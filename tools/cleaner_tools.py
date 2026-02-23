@@ -20,7 +20,7 @@ _STRICT_FILLERS = [
     r"\bhmm+\b",
 ]
 
-# These are softer filler phrases. Keep them by default, remove for stronger cleanup.
+# These are softer filler phrases. They are used by legacy local-cleaning helpers.
 _SOFT_FILLERS = [
     r"\byou know\b",
     r"\bi mean\b",
@@ -28,21 +28,6 @@ _SOFT_FILLERS = [
     r"\bsort of\b",
     r"\bkind of\b",
 ]
-
-
-def _to_bool(value: Any, default: bool = False) -> bool:
-    """Convert common true/false inputs into a real bool."""
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in {"1", "true", "yes", "y", "on"}:
-            return True
-        if lowered in {"0", "false", "no", "n", "off"}:
-            return False
-    return bool(value)
 
 
 def _clean_with_openai(transcript_text: str, mode: str, aggressiveness: str) -> tuple[str, str | None]:
@@ -254,7 +239,7 @@ def remove_filler_words(text: str) -> str:
     - JSON payload with transcript/segments and settings
 
     If input is plain text:
-    - returns cleaned plain text (for backward compatibility)
+    - returns cleaned plain text from the OpenAI model
 
     If input is JSON:
     - returns a JSON string with cleaned text, stats, and warnings
@@ -279,27 +264,13 @@ def remove_filler_words(text: str) -> str:
         return ""
 
     payload, _raw = _parse_input_payload(text)
-    default_use_openai = _to_bool(os.getenv("CLEANER_USE_OPENAI_DEFAULT", "true"), default=True)
 
     # Backward-compatible path: plain text in, plain text out.
     if payload is None:
-        if default_use_openai:
-            llm_cleaned, llm_error = _clean_with_openai(text, "cleaned", "balanced")
-            if llm_error:
-                cleaned_text, _stats, _warnings = _clean_plain_transcript(
-                    text=text,
-                    mode="cleaned",
-                    aggressiveness="balanced",
-                )
-            else:
-                cleaned_text = llm_cleaned
-        else:
-            cleaned_text, _stats, _warnings = _clean_plain_transcript(
-                text=text,
-                mode="cleaned",
-                aggressiveness="balanced",
-            )
-        return cleaned_text
+        llm_cleaned, llm_error = _clean_with_openai(text, "cleaned", "balanced")
+        if llm_error:
+            return f"[cleaner_error] {llm_error}"
+        return llm_cleaned
 
     mode = str(payload.get("mode", "cleaned")).lower()
     if mode not in {"cleaned", "verbatim"}:
@@ -308,7 +279,8 @@ def remove_filler_words(text: str) -> str:
     aggressiveness = str(payload.get("aggressiveness", "balanced")).lower()
     if aggressiveness not in {"balanced", "aggressive"}:
         aggressiveness = "balanced"
-    use_openai = _to_bool(payload.get("use_openai", default_use_openai), default=default_use_openai)
+    # OpenAI-only cleaner: this tool always uses the model path.
+    use_openai = True
 
     metadata = payload.get("metadata", {})
     transcript = payload.get("transcript")
@@ -323,44 +295,30 @@ def remove_filler_words(text: str) -> str:
     }
 
     if isinstance(segments, list):
-        # Segment input: clean each segment and also build a combined cleaned_text.
-        cleaned_segments, seg_stats, seg_warnings = _clean_segments(segments, mode, aggressiveness)
-        for key in totals:
-            totals[key] += seg_stats.get(key, 0)
-        warnings.extend(seg_warnings)
+        cleaned_segments = []
+        for seg in segments:
+            if not isinstance(seg, dict):
+                warnings.append("Encountered non-object segment; skipped.")
+                continue
+            seg_text = str(seg.get("text", ""))
+            llm_cleaned, llm_error = _clean_with_openai(seg_text, mode, aggressiveness)
+            if llm_error:
+                warnings.append(llm_error)
+                llm_cleaned = seg_text
+            copied = dict(seg)
+            copied["text"] = llm_cleaned
+            cleaned_segments.append(copied)
         cleaned_text = "\n".join(seg.get("text", "") for seg in cleaned_segments if seg.get("text")).strip()
     else:
         # JSON payload with transcript text.
         cleaned_segments = None
         base_text = str(transcript if transcript is not None else "")
-        if use_openai:
-            llm_cleaned, llm_error = _clean_with_openai(base_text, mode, aggressiveness)
-            if llm_error:
-                warnings.append(llm_error)
-                cleaned_text, text_stats, text_warnings = _clean_plain_transcript(
-                    text=base_text,
-                    mode=mode,
-                    aggressiveness=aggressiveness,
-                )
-            else:
-                cleaned_text = llm_cleaned
-                text_stats = {
-                    "strict_fillers_removed": 0,
-                    "soft_fillers_removed": 0,
-                    "stutters_collapsed": 0,
-                    "empty_speaker_lines_dropped": 0,
-                }
-                text_warnings = []
+        llm_cleaned, llm_error = _clean_with_openai(base_text, mode, aggressiveness)
+        if llm_error:
+            warnings.append(llm_error)
+            cleaned_text = base_text
         else:
-            cleaned_text, text_stats, text_warnings = _clean_plain_transcript(
-                text=base_text,
-                mode=mode,
-                aggressiveness=aggressiveness,
-            )
-
-        for key in totals:
-            totals[key] += text_stats.get(key, 0)
-        warnings.extend(text_warnings)
+            cleaned_text = llm_cleaned
 
     output: dict[str, Any] = {
         "mode": mode,
