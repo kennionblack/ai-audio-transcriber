@@ -8,6 +8,7 @@
 import json
 import re
 from typing import Any
+from tools import print_verbose
 
 
 def _strip_code_fences(text: str) -> str:
@@ -87,7 +88,6 @@ def validate_json_structure(transcription: str) -> str:
     warnings for missing expected content keys.
     """
     # Validate the JSON structure of the transcription, which may be raw JSON or contain JSON embedded in text/Markdown. The function extracts the most likely JSON candidate, attempts to parse it, and checks for required fields and correct types. It returns a human-readable status indicating whether the structure is valid or describing any issues found.
-    from tools import print_verbose
     print_verbose("---- Validating JSON structure ----")
 
     if not transcription or not transcription.strip():
