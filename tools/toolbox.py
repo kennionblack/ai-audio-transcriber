@@ -89,12 +89,25 @@ class ToolBox:
         self._funcs = {}
         self._tools = []
         self._audio_path = None
+        self._transcription_task = None
 
     def set_audio_path(self, audio_path):
         self._audio_path = audio_path
 
     def get_audio_path(self):
         return self._audio_path
+
+    def set_transcription_task(self, task):
+        self._transcription_task = task
+
+    async def get_transcript(self) -> str:
+        """Await the background transcription task and return the result."""
+        if self._transcription_task is None:
+            return "No transcription task started"
+        try:
+            return await self._transcription_task
+        except Exception as e:
+            return f"Transcription failed: {e}"
 
     def tool(self, func):
         self._tools.append(generate_function_schema(func))
