@@ -8,14 +8,8 @@ DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 
 # Load model once
-model = None
-
-def _get_model():
-    global model
-    if model is None:
-        print_verbose(f"Loading Whisper '{MODEL_NAME}' to {DEVICE} using {COMPUTE_TYPE} precision...")
-        model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
-    return model
+print_verbose(f"Loading Whisper '{MODEL_NAME}' to {DEVICE} using {COMPUTE_TYPE} precision...")
+model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
 
 def load_audio_file(file_path: str) -> str:
     if not os.path.exists(file_path):
@@ -24,8 +18,7 @@ def load_audio_file(file_path: str) -> str:
     try:
         print_verbose(f"Processing: {os.path.basename(file_path)}")
         
-        whisper_model = _get_model()
-        segments, info = whisper_model.transcribe(file_path, beam_size=5)
+        segments, info = model.transcribe(file_path, beam_size=5)
         
         print_verbose(f"Detected language: '{info.language}' (Probability: {info.language_probability:.2f})")
         
