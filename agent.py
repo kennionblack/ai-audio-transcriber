@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import signal
 import sys
 from pathlib import Path
 
@@ -113,6 +114,9 @@ def main(audio_path: Path):
 
 
 if __name__ == "__main__":
+    # This allows us to kill the process with just one Ctrl+C
+    signal.signal(signal.SIGINT, lambda *_: (print(), sys.exit(130)))
+
     parser = argparse.ArgumentParser(description="Run the agent pipeline on an audio file.")
     parser.add_argument("audio_file_path", type=Path, help="Path to the audio file to process")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
