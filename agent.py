@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import sys
@@ -13,6 +14,13 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
+
+VERBOSE = False
+
+def print_verbose(*args, **kwargs):
+    """Print only when --verbose flag is set."""
+    if VERBOSE:
+        print(*args, **kwargs)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
@@ -34,11 +42,11 @@ def add_agent_tools(agents: dict[str, Agent], tool_box: ToolBox):
 
 
 async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
-    print("")
-    print(f"---- RUNNING {agent['name']} ----")
+    print_verbose("")
+    print_verbose(f"---- RUNNING {agent['name']} ----")
     if message:
-        print(message)
-        print("----------------------------------")
+        print_verbose(message)
+        print_verbose("----------------------------------")
 
     history = [{"role": "system", "content": agent["prompt"]}]
     if message is not None:
@@ -58,7 +66,7 @@ async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
 
         for item in response.output:
             if item.type == "function_call":
-                print(f"---- {agent['name']} calling {item.name} ----")
+                print_verbose(f"---- {agent['name']} calling {item.name} ----")
                 result = await tool_box.run_tool(item.name, **json.loads(item.arguments))
 
                 history.append(
@@ -73,10 +81,10 @@ async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
                 return response.output_text
 
             elif item.type == "reasoning":
-                print(f"---- {agent['name']} REASONED ----")
+                print_verbose(f"---- {agent['name']} REASONED ----")
 
             else:
-                print(item, file=sys.stderr)
+                print_verbose(item, file=sys.stderr)
 
 def validate_audio_path(path: Path) -> bool:
     if not path.exists():
@@ -105,8 +113,11 @@ def main(audio_path: Path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python agent.py [audio_file_path]")
-        sys.exit(1)
-    
-    main(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description="Run the agent pipeline on an audio file.")
+    parser.add_argument("audio_file_path", type=Path, help="Path to the audio file to process")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
+    args = parser.parse_args()
+
+    VERBOSE = args.verbose
+    tools.VERBOSE = args.verbose
+    main(args.audio_file_path)
