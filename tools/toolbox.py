@@ -103,6 +103,8 @@ class ToolBox:
             async def safe_func(*args, **kwargs):
                 try:
                     return await func(*args, **kwargs)
+                except (KeyboardInterrupt, SystemExit):
+                    raise
                 except:
                     return traceback.format_exc()
 
@@ -110,6 +112,8 @@ class ToolBox:
             def safe_func(*args, **kwargs):
                 try:
                     return func(*args, **kwargs)
+                except (KeyboardInterrupt, SystemExit):
+                    raise
                 except:
                     return traceback.format_exc()
 
