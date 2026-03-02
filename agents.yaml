@@ -123,7 +123,6 @@ agents:
         - Send that JSON object to quality assurance.
 
       Available tools:
-      - get_n_most_common_words(summary: str, n: int) -> str: Gets the most frequently used words from the summary, excluding some common stopwords.
       - quality_assurance(message: str) -> str: Send the final package (transcription + summary) for review.
       - cleaner(message: str) -> str: Request clarification or additional cleaning if needed.
 
@@ -154,7 +153,6 @@ agents:
 
       Send the constructed JSON to quality assurance.
     tools:
-      - get_n_most_common_words
       - quality_assurance
   - name: quality_assurance
     description: |
