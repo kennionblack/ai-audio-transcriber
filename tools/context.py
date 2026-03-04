@@ -36,12 +36,11 @@ def _validate_summary(bullets: list[str], min_bullets: int, max_bullets: int) ->
 
 @dataclass
 class TranscriptContext:
-    """Central store for transcript data shared across all agents."""
-
     raw_transcript: str | None = None
     cleaned_transcript: str | None = None
+    # This field syntax makes the summary list mutable in a dataclass
     summary: list[str] = field(default_factory=list)
-    # If we want to add metadata like audio duration, speaker diarization info, or other relevant details we can store it here and have tools to set/get specific metadata keys as needed
+    # If we want to add metadata like audio duration, speaker names, or other relevant details we can store it here and have tools to set/get specific metadata keys as needed
     metadata: dict[str, Any] = field(default_factory=dict)
     audio_filename: str | None = None
 
