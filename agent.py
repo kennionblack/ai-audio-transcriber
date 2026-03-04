@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 from config import Agent, load_config
 from tools.toolbox import ToolBox
+from tools.context import get_context
 import tools
 
 from dotenv import load_dotenv
@@ -27,10 +28,13 @@ def print_verbose(*args, **kwargs):
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
+ctx = get_context()
 
 async def get_transcript() -> str:
-    """Retrieve the transcript of the audio file. Awaits until transcription is complete."""
-    return await tool_box.get_transcript()
+    """Retrieve the raw transcript. Blocks until transcription is complete, then stores it in the shared context."""
+    transcript = await tool_box.get_transcript()
+    ctx.set_raw_transcript(transcript)
+    return transcript
 
 tool_box.tool(get_transcript)
 tools.register_all_tools(tool_box)
@@ -101,11 +105,12 @@ def validate_audio_path(path: Path) -> bool:
 def _run_transcription(audio_path: str) -> str:
     """Wrapper function for transcription that runs on separate thread"""
     transcript = load_audio_file(audio_path)
-    print(f"---- TRANSCRIPTION COMPLETE ----\n")
+    print_verbose("---- TRANSCRIPTION COMPLETE ----\n")
     return transcript
 
 async def async_main(audio_path: Path):
     tool_box.set_audio_path(str(audio_path))
+    ctx.audio_filename = audio_path.name
 
     # This allows the transcription to run in the background while the agent initializes and calls its own tools.
     # This also allows the user to interact with the coordinator while the transcript is processed concurrently
