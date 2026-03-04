@@ -7,6 +7,13 @@ import importlib
 import inspect
 from pathlib import Path
 
+VERBOSE = False
+
+def print_verbose(*args, **kwargs):
+    """Print only when --verbose flag is set."""
+    if VERBOSE:
+        print(*args, **kwargs)
+
 def register_all_tools(tool_box):
     tools_dir = Path(__file__).parent
     tool_modules = tools_dir.glob("*_tools.py")
