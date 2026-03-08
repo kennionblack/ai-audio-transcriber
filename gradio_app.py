@@ -66,7 +66,7 @@ def _build_chat_messages(logs: list[str]) -> list[dict]:
                 # Intercept the backend log leak and replace "User:" with a sparkle
                 clean_line = line
                 if clean_line.startswith("User: ----"):
-                    clean_line = clean_line.replace("User: ", "✨ ")
+                    clean_line = clean_line.replace("User: ", "")
                 current_content.append(clean_line)
                 
     flush_message()
@@ -172,7 +172,7 @@ def refresh_outputs() -> tuple[str, str, str, list[dict], str]:
             
             # Add cursor if still typing
             if APP_STATE["typed_prompt_length"] < len(latest_ai_text):
-                display_text += " █"
+                display_text += ""
                 
             messages[-1]["content"] = display_text
     # ------------------------------------
@@ -286,7 +286,7 @@ CSS = """
   color: #666;
   margin-top: 0.5rem;
 }
-/* Ensure tab text is always visible */
+
 .tab-nav button {
   color: inherit !important;
 }
