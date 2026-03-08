@@ -13,56 +13,67 @@ import sys
 import threading
 from pathlib import Path
 import gradio as gr
-# Checks if output looks like valid transcription JSON.
 from tools.quality_assurance_tools import validate_json_structure
 
-# File types we allow.
 SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac"}
 
-# Shared app state.
-# We keep one running job at a time.
 APP_STATE = {
-    "process": None,  # Running process, or None.
-    "logs": [],  # Live console lines.
-    "status": "Idle",  # Idle / Running / Completed / Failed.
-    "raw_output": "",  # Full final output text.
-    "lock": threading.Lock(),  # Keeps thread updates safe.
+    "process": None,
+    "logs": [],
+    "status": "Idle",
+    "raw_output": "",
+    "lock": threading.Lock(),
+    "last_target_prompt": "",     # Tracks the current AI question
+    "typed_prompt_length": 0,     # Tracks how much of the question is revealed
 }
 
 
-def _extract_latest_ai_prompt(logs: list[str]) -> str:
-    """Get the most recent AI question block from logs."""
-    # Find the latest line that starts with "AI:".
-    start_index = -1
-    for i, line in enumerate(logs):
-        if line.strip().startswith("AI:"):
-            start_index = i
+def _build_chat_messages(logs: list[str]) -> list[dict]:
+    """Parses raw logs into a format the Gradio Chatbot can display (Left/Right bubbles)."""
+    messages = []
+    current_role = None
+    current_content = []
 
-    # No AI prompt found.
-    if start_index == -1:
-        return ""
+    def flush_message():
+        if current_role and current_content:
+            text = "\n".join(current_content).strip()
+            if text:
+                messages.append({"role": current_role, "content": text})
+        current_content.clear()
 
-    # Copy lines until we hit the next section marker.
-    collected: list[str] = []
-    for line in logs[start_index:]:
-        # Stop when a new section starts.
-        if collected and line.strip().startswith("---- "):
-            break
-        collected.append(line)
-    return "\n".join(collected).strip()
-
+    for line in logs:
+        # Detect User Replies
+        if line.startswith("User(UI): "):
+            flush_message()
+            messages.append({"role": "user", "content": line[10:].strip()})
+        # Detect Agent Prompts
+        elif line.strip().startswith("AI:"):
+            flush_message()
+            current_role = "assistant"
+            # Remove "AI:" prefix
+            current_content.append(line[line.find("AI:")+3:].lstrip())
+        # Continue capturing Agent Prompt until the separator
+        elif current_role == "assistant":
+            # Keep capturing if it's the internal reasoning block
+            if line.strip().startswith("----") and "REASONED" not in line:
+                flush_message()
+                current_role = None
+            else:
+                # Intercept the backend log leak and replace "User:" with a sparkle
+                clean_line = line
+                if clean_line.startswith("User: ----"):
+                    clean_line = clean_line.replace("User: ", "✨ ")
+                current_content.append(clean_line)
+                
+    flush_message()
+    return messages
 
 def _reader_thread(process: subprocess.Popen) -> None:
-    """Read process output and save it to APP_STATE."""
-    # We expect stdout to be available.
     assert process.stdout is not None
-
-    # Save each new output line.
     for line in process.stdout:
         with APP_STATE["lock"]:
             APP_STATE["logs"].append(line.rstrip("\n"))
 
-    # When done, store status and full output.
     return_code = process.wait()
     with APP_STATE["lock"]:
         APP_STATE["raw_output"] = "\n".join(APP_STATE["logs"]).strip()
@@ -70,8 +81,6 @@ def _reader_thread(process: subprocess.Popen) -> None:
 
 
 def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
-    """Start agent.py in the background."""
-    # Check file input.
     if not audio_path:
         return "No file uploaded. Please choose an audio file first.", "", "", "Idle"
 
@@ -79,88 +88,100 @@ def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
     if not path.exists() or not path.is_file():
         return f"Invalid file path: {path}", "", "", "Idle"
 
-    # Check file extension.
     if path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
         supported = ", ".join(sorted(SUPPORTED_AUDIO_SUFFIXES))
         return f"Unsupported file type '{path.suffix}'. Supported types: {supported}", "", "", "Idle"
 
-    # Do not start a second run if one is already active.
     with APP_STATE["lock"]:
         existing = APP_STATE["process"]
         if existing is not None and existing.poll() is None:
             current_logs = "\n".join(APP_STATE["logs"])
             return "A transcription is already running.", current_logs, APP_STATE["raw_output"], APP_STATE["status"]
 
-    # Start backend process.
-    # `-u` = unbuffered output (live logs), `-v` = verbose mode.
     command = [sys.executable, "-u", "agent.py", "-v", audio_path]
     process = subprocess.Popen(
         command,
-        cwd=Path(__file__).parent,  # Run in project folder.
-        stdout=subprocess.PIPE,  # Capture output for UI.
-        stderr=subprocess.STDOUT,  # Keep all output in one stream.
-        stdin=subprocess.PIPE,  # Needed for Send Reply.
-        text=True,  # Read/write strings.
-        bufsize=1,  # Line buffering.
+        cwd=Path(__file__).parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
 
-    # Reset state for this new run.
     with APP_STATE["lock"]:
         APP_STATE["process"] = process
         APP_STATE["logs"] = [f"Running: {' '.join(command)}"]
         APP_STATE["status"] = "Running"
         APP_STATE["raw_output"] = ""
+        # Reset chat states
+        APP_STATE["last_target_prompt"] = ""
+        APP_STATE["typed_prompt_length"] = 0
 
-    # Start background log reader.
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
     return "Transcription started. Live logs are updating below.", "\n".join(APP_STATE["logs"]), "", "Running"
 
 
-def refresh_outputs() -> tuple[str, str, str, str, str]:
-    """Read current state and build values for the UI."""
-    # Read shared state safely.
+def refresh_outputs() -> tuple[str, str, str, list[dict], str]:
     with APP_STATE["lock"]:
         logs = list(APP_STATE["logs"])
         raw_output = APP_STATE["raw_output"]
         status = APP_STATE["status"]
 
-    # Build verbose log text.
     verbose_text = "\n".join(logs).strip()
-    # Show latest AI question in its own box.
-    latest_ai_prompt = _extract_latest_ai_prompt(logs)
+    
+    # Generate chat history bubbles
+    messages = _build_chat_messages(logs)
 
-    # Main output text depends on status.
+    # --- TYPEWRITER LOGIC FOR CHATBOT ---
+    with APP_STATE["lock"]:
+        # If the very last message is from the agent, stream it
+        if messages and messages[-1]["role"] == "assistant":
+            latest_ai_text = messages[-1]["content"]
+            
+            if APP_STATE["last_target_prompt"] != latest_ai_text:
+                APP_STATE["last_target_prompt"] = latest_ai_text
+                APP_STATE["typed_prompt_length"] = 0
+                
+            if APP_STATE["typed_prompt_length"] < len(latest_ai_text):
+                APP_STATE["typed_prompt_length"] += 45 
+                APP_STATE["typed_prompt_length"] = min(APP_STATE["typed_prompt_length"], len(latest_ai_text))
+
+            display_text = latest_ai_text[:APP_STATE["typed_prompt_length"]]
+            
+            # Add cursor if still typing
+            if APP_STATE["typed_prompt_length"] < len(latest_ai_text):
+                display_text += " █"
+                
+            messages[-1]["content"] = display_text
+    # ------------------------------------
+
     if status.startswith("Completed"):
         qa_status = validate_json_structure(raw_output)
         output_text = f"Transcription complete.\nQA: {qa_status}\n\n{raw_output or '[No output returned]'}"
     elif status.startswith("Failed"):
         output_text = f"Transcription failed.\n\n{raw_output or '[No output returned]'}"
     elif status == "Running":
-        output_text = "Transcription running... watch logs below.\n\nIf agent asks a question, type reply and click Send Reply."
+        output_text = "Transcription running... watch the 'Live Logs' tab.\n\nIf agent asks a question, type your reply above."
     else:
         output_text = "Ready."
 
-    return output_text, verbose_text, raw_output, latest_ai_prompt, status
+    return output_text, verbose_text, raw_output, messages, status
 
 
 def send_reply(reply_text: str) -> tuple[str, str]:
-    """Send user reply to the running process."""
-    # Ignore blank input.
     reply = reply_text.strip()
     if not reply:
         return "", "Reply is empty. Type a response first."
 
-    # Send reply only if process is running and stdin is available.
     with APP_STATE["lock"]:
         process = APP_STATE["process"]
         if process is None or process.poll() is not None or process.stdin is None:
             return "", "No running process is waiting for input."
 
         try:
-            # input() reads one line, so send newline.
             process.stdin.write(reply + "\n")
             process.stdin.flush()
-            # Add reply to log so users can see it.
             APP_STATE["logs"].append(f"User(UI): {reply}")
         except Exception as exc:
             return reply_text, f"Failed to send reply: {exc}"
@@ -169,164 +190,166 @@ def send_reply(reply_text: str) -> tuple[str, str]:
 
 
 def lookup(term: str, raw_transcript: str) -> str:
-    """Find lines containing the lookup term (case-insensitive)."""
-    # A transcript is required for lookup.
     if not raw_transcript.strip():
         return "No transcription result available yet. Click Transcribe first."
 
-    # A search term is required.
     query = term.strip()
     if not query:
         return "Enter a lookup term first."
 
-    # Start by searching the full output text.
     search_text = raw_transcript
     try:
-        # If output is JSON, search common text fields.
         data = json.loads(raw_transcript)
         if isinstance(data, dict):
             parts: list[str] = []
-            # Common transcript fields.
             if isinstance(data.get("transcription"), str):
                 parts.append(data["transcription"])
             if isinstance(data.get("text"), str):
                 parts.append(data["text"])
-            # Summary can be text or a list.
             summary = data.get("summary")
             if isinstance(summary, str):
                 parts.append(summary)
             elif isinstance(summary, list):
                 parts.extend(str(item) for item in summary)
-            # Use extracted text when present.
             if parts:
                 search_text = "\n".join(parts)
     except json.JSONDecodeError:
-        # If not JSON, keep searching raw text.
         pass
 
-    # Search line by line so results are easy to read.
     matches = [line for line in search_text.splitlines() if query.lower() in line.lower()]
     if not matches:
         return f"No matches found for '{query}'."
 
-    # Show first 20 matches.
     preview = "\n".join(matches[:20])
     return f"Found {len(matches)} matching line(s) for '{query}':\n\n{preview}"
 
 
-def clear_all() -> tuple[None, str, str, str, str, str, str, str]:
-    """Reset file input, output boxes, and hidden state."""
-    # Reset cached values.
+def clear_all() -> tuple[None, str, str, str, str, list, str, str]:
     with APP_STATE["lock"]:
         APP_STATE["logs"] = []
         APP_STATE["raw_output"] = ""
         APP_STATE["status"] = "Idle"
-    # Return values in the same order as clear button outputs.
-    return None, "Ready.", "", "", "", "", "Idle", ""
+        APP_STATE["last_target_prompt"] = ""
+        APP_STATE["typed_prompt_length"] = 0
+    return None, "Ready.", "", "", "", [], "Idle", ""
 
 
-# UI style.
+# --- UI LAYOUT STARTS HERE ---
 CSS = """
-.gradio-container {
-  background: linear-gradient(120deg, #f5f7f8 0%, #e9f0f2 45%, #f8f3e9 100%);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-}
 #app-title {
   letter-spacing: 0.01em;
   font-weight: 700;
+  margin-bottom: 0.2em;
 }
-.panel {
-  border: 1px solid #c8d2d6;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
+.status-text {
+  font-size: 0.9em;
+  color: #666;
+  margin-top: 0.5rem;
+}
+/* Ensure tab text is always visible */
+.tab-nav button {
+  color: inherit !important;
 }
 """
 
-
-with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
-    # Title and description.
-    gr.Markdown("## AI Audio Transcriber Demo", elem_id="app-title")
-    gr.Markdown("This GUI runs `agent.py -v` and supports transcript lookup.")
-
-    # Hidden value that stores latest raw transcript text.
+with gr.Blocks(title="AI Audio Transcriber Demo") as app:
+    
+    gr.Markdown("## 🎙️ AI Audio Transcriber Workspace", elem_id="app-title")
     transcript_state = gr.State("")
 
-    # Layout: controls left, output right.
     with gr.Row():
-        with gr.Column(elem_classes=["panel"]):
-            # File upload.
-            audio_input = gr.Audio(
-                label="File Upload",
-                sources=["upload"],
-                type="filepath",
-            )
-            # Start transcription.
-            transcribe_button = gr.Button("Transcribe", variant="primary")
-            # Term to search for.
-            lookup_input = gr.Textbox(
-                label="Lookup Term",
-                placeholder="Example: action item",
-                lines=1,
-            )
-            # Your answer when agent asks questions.
-            agent_reply_input = gr.Textbox(
-                label="Your Reply To Agent",
-                placeholder="Type your answer when agent asks a question, then click Send Reply.",
-                lines=3,
-            )
-            # Send reply to running process.
-            send_reply_button = gr.Button("Send Reply")
-            # Shows reply result.
-            reply_status = gr.Textbox(label="Reply Status", lines=2)
-            # Run lookup.
-            lookup_button = gr.Button("Lookup")
-            # Clear the UI.
-            clear_button = gr.Button("Clear")
+        
+        # --- LEFT SIDEBAR ---
+        with gr.Column(scale=1):
+            gr.Markdown("### ⚙️ Setup & Run")
+            audio_input = gr.Audio(label="Audio File", sources=["upload"], type="filepath")
+            transcribe_button = gr.Button("Transcribe Audio", variant="primary")
+            run_status_display = gr.Textbox(label="System Status", lines=1, value="Idle", interactive=False)
+            
+            gr.Markdown("---")
+            
+            gr.Markdown("### 🔍 Search Transcript")
+            lookup_input = gr.Textbox(show_label=False, placeholder="Search term...", lines=1)
+            lookup_button = gr.Button("Search", variant="secondary")
+            lookup_display = gr.Textbox(label="Search Results", lines=4, max_lines=4)
+            
+            gr.Markdown("---")
+            clear_button = gr.Button("🗑️ Clear Entire Workspace", variant="stop")
 
-        with gr.Column(elem_classes=["panel"]):
-            # Main output area.
-            output_display = gr.Textbox(label="Output Display", lines=14)
-            # Latest AI question.
-            agent_prompt_display = gr.Textbox(label="Latest Agent Question", lines=8)
-            # Lookup matches.
-            lookup_display = gr.Textbox(label="Lookup Results", lines=8)
-            # Run status.
-            run_status_display = gr.Textbox(label="Run Status", lines=2, value="Idle")
-            # Live logs.
-            verbose_display = gr.Textbox(label="Verbose Console (-v)", lines=12)
+        # --- RIGHT COLUMN (MAIN WORKSPACE) ---
+        with gr.Column(scale=3):
+            
+            gr.Markdown("### 💬 Agent Interaction")
+            
+            agent_chatbot = gr.Chatbot(
+                label="Conversation", 
+                height=450, 
+                show_label=False,
+                autoscroll=False,
+                avatar_images=(
+                    "https://cdn-icons-png.flaticon.com/512/1077/1077114.png", # Human Icon
+                    "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/png/512/emoji_u2728.png"  # Static Robot Icon
+                )
+            )
+            
+            with gr.Row(equal_height=True):
+                agent_reply_input = gr.Textbox(
+                    show_label=False, 
+                    placeholder="Type your reply here and hit Enter...", 
+                    lines=1,
+                    scale=4
+                )
+                send_reply_button = gr.Button("Send Reply", variant="primary", scale=1)
+                
+            reply_status = gr.Markdown(value="", elem_classes=["status-text"])
 
-    # Refresh UI every 0.5 seconds.
+            gr.Markdown("<br>")
+            
+            with gr.Tabs():
+                with gr.TabItem("Live Agent Logs"):
+                    verbose_display = gr.Textbox(show_label=False, lines=16, max_lines=16, interactive=False)
+                
+                with gr.TabItem("Final Transcript Output"):
+                    output_display = gr.Textbox(show_label=False, lines=16, max_lines=16)
+
+    # --- EVENT LISTENERS ---
+    
     poll_timer = gr.Timer(0.5)
 
-    # Start run button action.
     transcribe_button.click(
         fn=transcribe,
         inputs=[audio_input],
         outputs=[output_display, verbose_display, transcript_state, run_status_display],
     )
 
-    # Auto-refresh action.
     poll_timer.tick(
         fn=refresh_outputs,
         inputs=[],
-        outputs=[output_display, verbose_display, transcript_state, agent_prompt_display, run_status_display],
+        outputs=[output_display, verbose_display, transcript_state, agent_chatbot, run_status_display],
     )
 
-    # Send reply action.
     send_reply_button.click(
         fn=send_reply,
         inputs=[agent_reply_input],
         outputs=[agent_reply_input, reply_status],
     )
+    agent_reply_input.submit(
+        fn=send_reply,
+        inputs=[agent_reply_input],
+        outputs=[agent_reply_input, reply_status],
+    )
 
-    # Lookup action.
     lookup_button.click(
         fn=lookup,
         inputs=[lookup_input, transcript_state],
         outputs=[lookup_display],
     )
+    lookup_input.submit(
+        fn=lookup,
+        inputs=[lookup_input, transcript_state],
+        outputs=[lookup_display],
+    )
 
-    # Clear action.
     clear_button.click(
         fn=clear_all,
         inputs=[],
@@ -336,13 +359,11 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
             lookup_display,
             verbose_display,
             transcript_state,
-            agent_prompt_display,
+            agent_chatbot,
             run_status_display,
             reply_status,
         ],
     )
 
-
 if __name__ == "__main__":
-    # Start app.
-    app.queue().launch()
+    app.queue().launch(css=CSS, theme=gr.themes.Soft(primary_hue="slate"))
