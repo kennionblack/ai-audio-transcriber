@@ -13,18 +13,22 @@ import sys
 import threading
 from pathlib import Path
 import gradio as gr
+# Checks if output looks like valid transcription JSON.
 from tools.quality_assurance_tools import validate_json_structure
 
+# File types we allow.
 SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac"}
 
+# Shared app state.
+# We keep one running job at a time.
 APP_STATE = {
-    "process": None,
-    "logs": [],
-    "status": "Idle",
-    "raw_output": "",
-    "lock": threading.Lock(),
-    "last_target_prompt": "",     # Tracks the current AI question
-    "typed_prompt_length": 0,     # Tracks how much of the question is revealed
+    "process": None, # Running process, or None.
+    "logs": [], # Live console lines.
+    "status": "Idle", # Idle / Running / Completed / Failed.
+    "raw_output": "", # Full final output text.
+    "lock": threading.Lock(), # Keeps thread updates safe.
+    "last_target_prompt": "",
+    "typed_prompt_length": 0,
 }
 
 
@@ -69,11 +73,16 @@ def _build_chat_messages(logs: list[str]) -> list[dict]:
     return messages
 
 def _reader_thread(process: subprocess.Popen) -> None:
+    """Read process output and save it to APP_STATE."""
+    # We expect stdout to be available.
     assert process.stdout is not None
+
+    # Save each new output line.
     for line in process.stdout:
         with APP_STATE["lock"]:
             APP_STATE["logs"].append(line.rstrip("\n"))
 
+    # When done, store status and full output.
     return_code = process.wait()
     with APP_STATE["lock"]:
         APP_STATE["raw_output"] = "\n".join(APP_STATE["logs"]).strip()
@@ -81,10 +90,13 @@ def _reader_thread(process: subprocess.Popen) -> None:
 
 
 def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
+    """Start agent.py in the background."""
+    # Check file input.
     if not audio_path:
         return "No file uploaded. Please choose an audio file first.", "", "", "Idle"
 
     path = Path(audio_path)
+    # Check file extension.
     if not path.exists() or not path.is_file():
         return f"Invalid file path: {path}", "", "", "Idle"
 
@@ -92,23 +104,27 @@ def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
         supported = ", ".join(sorted(SUPPORTED_AUDIO_SUFFIXES))
         return f"Unsupported file type '{path.suffix}'. Supported types: {supported}", "", "", "Idle"
 
+    # Do not start a second run if one is already active.
     with APP_STATE["lock"]:
         existing = APP_STATE["process"]
         if existing is not None and existing.poll() is None:
             current_logs = "\n".join(APP_STATE["logs"])
             return "A transcription is already running.", current_logs, APP_STATE["raw_output"], APP_STATE["status"]
 
+    # Start backend process.
+    # `-u` = unbuffered output (live logs), `-v` = verbose mode.
     command = [sys.executable, "-u", "agent.py", "-v", audio_path]
     process = subprocess.Popen(
         command,
-        cwd=Path(__file__).parent,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        stdin=subprocess.PIPE,
-        text=True,
-        bufsize=1,
+        cwd=Path(__file__).parent, # Run in project folder.
+        stdout=subprocess.PIPE, # Capture output for UI.
+        stderr=subprocess.STDOUT, # Keep all output in one stream.
+        stdin=subprocess.PIPE, # Needed for Send Reply.
+        text=True, # Read/write strings.
+        bufsize=1, # Line buffering.
     )
 
+    # Reset state for this new run.
     with APP_STATE["lock"]:
         APP_STATE["process"] = process
         APP_STATE["logs"] = [f"Running: {' '.join(command)}"]
@@ -118,16 +134,21 @@ def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
         APP_STATE["last_target_prompt"] = ""
         APP_STATE["typed_prompt_length"] = 0
 
+    # Start background log reader.
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
     return "Transcription started. Live logs are updating below.", "\n".join(APP_STATE["logs"]), "", "Running"
 
 
+
 def refresh_outputs() -> tuple[str, str, str, list[dict], str]:
+    """Read current state and build values for the UI."""
+    # Read shared state safely.
     with APP_STATE["lock"]:
         logs = list(APP_STATE["logs"])
         raw_output = APP_STATE["raw_output"]
         status = APP_STATE["status"]
 
+    # Build verbose log text.
     verbose_text = "\n".join(logs).strip()
     
     # Generate chat history bubbles
@@ -156,6 +177,7 @@ def refresh_outputs() -> tuple[str, str, str, list[dict], str]:
             messages[-1]["content"] = display_text
     # ------------------------------------
 
+    # Main output text depends on status.
     if status.startswith("Completed"):
         qa_status = validate_json_structure(raw_output)
         output_text = f"Transcription complete.\nQA: {qa_status}\n\n{raw_output or '[No output returned]'}"
@@ -170,18 +192,23 @@ def refresh_outputs() -> tuple[str, str, str, list[dict], str]:
 
 
 def send_reply(reply_text: str) -> tuple[str, str]:
+    """Send user reply to the running process."""
+    # Ignore blank input.
     reply = reply_text.strip()
     if not reply:
         return "", "Reply is empty. Type a response first."
 
+    # Send reply only if process is running and stdin is available.
     with APP_STATE["lock"]:
         process = APP_STATE["process"]
         if process is None or process.poll() is not None or process.stdin is None:
             return "", "No running process is waiting for input."
 
         try:
+            # input() reads one line, so send newline.
             process.stdin.write(reply + "\n")
             process.stdin.flush()
+            # Add reply to log so users can see it.
             APP_STATE["logs"].append(f"User(UI): {reply}")
         except Exception as exc:
             return reply_text, f"Failed to send reply: {exc}"
@@ -190,36 +217,47 @@ def send_reply(reply_text: str) -> tuple[str, str]:
 
 
 def lookup(term: str, raw_transcript: str) -> str:
+    """Find lines containing the lookup term (case-insensitive)."""
+    # A transcript is required for lookup.
     if not raw_transcript.strip():
         return "No transcription result available yet. Click Transcribe first."
 
+    # A search term is required.
     query = term.strip()
     if not query:
         return "Enter a lookup term first."
 
+    # Start by searching the full output text.
     search_text = raw_transcript
     try:
+        # If output is JSON, search common text fields.
         data = json.loads(raw_transcript)
         if isinstance(data, dict):
             parts: list[str] = []
+            # Common transcript fields.
             if isinstance(data.get("transcription"), str):
                 parts.append(data["transcription"])
             if isinstance(data.get("text"), str):
                 parts.append(data["text"])
+            # Summary can be text or a list.
             summary = data.get("summary")
             if isinstance(summary, str):
                 parts.append(summary)
             elif isinstance(summary, list):
                 parts.extend(str(item) for item in summary)
+            # Use extracted text when present.
             if parts:
                 search_text = "\n".join(parts)
     except json.JSONDecodeError:
+        # If not JSON, keep searching raw text.
         pass
 
+    # Search line by line so results are easy to read.
     matches = [line for line in search_text.splitlines() if query.lower() in line.lower()]
     if not matches:
         return f"No matches found for '{query}'."
 
+    # Show first 20 matches.
     preview = "\n".join(matches[:20])
     return f"Found {len(matches)} matching line(s) for '{query}':\n\n{preview}"
 
@@ -231,9 +269,11 @@ def clear_all() -> tuple[None, str, str, str, str, list, str, str]:
         APP_STATE["status"] = "Idle"
         APP_STATE["last_target_prompt"] = ""
         APP_STATE["typed_prompt_length"] = 0
+    # Return values in the same order as clear button outputs.
     return None, "Ready.", "", "", "", [], "Idle", ""
 
 
+# UI style.
 # --- UI LAYOUT STARTS HERE ---
 CSS = """
 #app-title {
@@ -252,6 +292,7 @@ CSS = """
 }
 """
 
+# Hidden value that stores latest raw transcript text.
 with gr.Blocks(title="AI Audio Transcriber Demo") as app:
     
     gr.Markdown("## 🎙️ AI Audio Transcriber Workspace", elem_id="app-title")
@@ -316,18 +357,21 @@ with gr.Blocks(title="AI Audio Transcriber Demo") as app:
     
     poll_timer = gr.Timer(0.5)
 
+    # Start run button action.
     transcribe_button.click(
         fn=transcribe,
         inputs=[audio_input],
         outputs=[output_display, verbose_display, transcript_state, run_status_display],
     )
 
+    # Auto-refresh action.
     poll_timer.tick(
         fn=refresh_outputs,
         inputs=[],
         outputs=[output_display, verbose_display, transcript_state, agent_chatbot, run_status_display],
     )
 
+    # Send reply action.
     send_reply_button.click(
         fn=send_reply,
         inputs=[agent_reply_input],
@@ -339,6 +383,7 @@ with gr.Blocks(title="AI Audio Transcriber Demo") as app:
         outputs=[agent_reply_input, reply_status],
     )
 
+    # Lookup action.
     lookup_button.click(
         fn=lookup,
         inputs=[lookup_input, transcript_state],
@@ -350,6 +395,7 @@ with gr.Blocks(title="AI Audio Transcriber Demo") as app:
         outputs=[lookup_display],
     )
 
+    # Clear action.
     clear_button.click(
         fn=clear_all,
         inputs=[],
