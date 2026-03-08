@@ -74,19 +74,22 @@ def _build_chat_messages(logs: list[str]) -> list[dict]:
 
 def _reader_thread(process: subprocess.Popen) -> None:
     """Read process output and save it to APP_STATE."""
-    # We expect stdout to be available.
     assert process.stdout is not None
 
     # Save each new output line.
     for line in process.stdout:
         with APP_STATE["lock"]:
+            # Stop logging immediately if the user clicked Clear
+            if APP_STATE["process"] is not process:
+                break
             APP_STATE["logs"].append(line.rstrip("\n"))
 
-    # When done, store status and full output.
     return_code = process.wait()
     with APP_STATE["lock"]:
-        APP_STATE["raw_output"] = "\n".join(APP_STATE["logs"]).strip()
-        APP_STATE["status"] = "Completed" if return_code == 0 else f"Failed (exit {return_code})"
+        # Only finalize the output if this run wasn't cancelled
+        if APP_STATE["process"] is process:
+            APP_STATE["raw_output"] = "\n".join(APP_STATE["logs"]).strip()
+            APP_STATE["status"] = "Completed" if return_code == 0 else f"Failed (exit {return_code})"
 
 
 def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
@@ -264,11 +267,17 @@ def lookup(term: str, raw_transcript: str) -> str:
 
 def clear_all() -> tuple[None, str, str, str, str, list, str, str]:
     with APP_STATE["lock"]:
+        # Terminate the ghost process if it is still running in the background
+        if APP_STATE["process"] is not None and APP_STATE["process"].poll() is None:
+            APP_STATE["process"].kill()
+        APP_STATE["process"] = None
+        
         APP_STATE["logs"] = []
         APP_STATE["raw_output"] = ""
         APP_STATE["status"] = "Idle"
         APP_STATE["last_target_prompt"] = ""
         APP_STATE["typed_prompt_length"] = 0
+        
     # Return values in the same order as clear button outputs.
     return None, "Ready.", "", "", "", [], "Idle", ""
 
