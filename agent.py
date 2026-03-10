@@ -9,10 +9,13 @@ from openai import AsyncOpenAI
 
 from config import Agent, load_config
 from tools.toolbox import ToolBox
+from tools.context import get_context
 import tools
 
 from dotenv import load_dotenv
 import os
+
+from tools.transcription import load_audio_file
 
 load_dotenv()
 
@@ -25,16 +28,15 @@ def print_verbose(*args, **kwargs):
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
+ctx = get_context()
 
-def get_audio_file_path() -> str:
-    """Get the audio file path that was passed as a command-line argument.
-    
-    Returns the absolute path to the audio file that needs to be processed.
-    """
-    audio_path = tool_box.get_audio_path()
-    return audio_path if audio_path else "No audio file path provided"
+async def get_transcript() -> str:
+    """Retrieve the raw transcript. Blocks until transcription is complete, then stores it in the shared context."""
+    transcript = await tool_box.get_transcript()
+    ctx.set_raw_transcript(transcript)
+    return transcript
 
-tool_box.tool(get_audio_file_path)
+tool_box.tool(get_transcript)
 tools.register_all_tools(tool_box)
 
 def add_agent_tools(agents: dict[str, Agent], tool_box: ToolBox):
@@ -100,17 +102,33 @@ def validate_audio_path(path: Path) -> bool:
         return False
     return True
 
-def main(audio_path: Path):
-    if not validate_audio_path(audio_path):
-        sys.exit(1)
-    
+def _run_transcription(audio_path: str) -> str:
+    """Wrapper function for transcription that runs on separate thread"""
+    transcript = load_audio_file(audio_path)
+    print_verbose("---- TRANSCRIPTION COMPLETE ----\n")
+    return transcript
+
+async def async_main(audio_path: Path):
     tool_box.set_audio_path(str(audio_path))
-    
+    ctx.audio_filename = audio_path.name
+
+    # This allows the transcription to run in the background while the agent initializes and calls its own tools.
+    # This also allows the user to interact with the coordinator while the transcript is processed concurrently
+    transcription_task = asyncio.create_task(
+        asyncio.to_thread(_run_transcription, str(audio_path))
+    )
+    tool_box.set_transcription_task(transcription_task)
+
     config = load_config(Path("agents.yaml"))
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
     main_agent = config["main"]
-    asyncio.run(run_agent(agents[main_agent], tool_box, None))
+    await run_agent(agents[main_agent], tool_box, None)
+
+def main(audio_path: Path):
+    if not validate_audio_path(audio_path):
+        sys.exit(1)
+    asyncio.run(async_main(audio_path))
 
 
 if __name__ == "__main__":

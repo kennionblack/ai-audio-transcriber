@@ -3,5 +3,8 @@ __pycache__
 # ignore the contents of the audio folder so we don't commit big audio chunks
 /audio/*
 !/audio/.gitkeep
+# generated output files
+/output/*
+!/output/.gitkeep
 
 .pytest_cache
