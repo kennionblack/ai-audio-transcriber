@@ -19,46 +19,14 @@ An end-to-end, multi-agent pipeline that turns raw interview audio into structur
 - We will probably need to continue to tweak the requirements and Dockerfile as we learn more about the needs of the project.
 
 
-## QA Validation
+## Pipeline
 
-The quality assurance utility in `tools/quality_assurance_tools.py` validates
-transcription JSON produced by the pipeline.
+The pipeline consists of two agents:
 
-### Function
-
-- `validate_json_structure(transcription: str) -> str`
-
-### Accepted Input
-
-- Plain JSON text
-- JSON wrapped in Markdown code fences (for example, ```json ... ```)
-- Mixed text where a JSON object/array can be extracted
-
-### Expected Top-Level Shape
-
-The validator expects a top-level JSON object. It checks these keys when
-present:
-
-- `transcription`: string
-- `text`: string
-- `summary`: string or list of strings
-- `segments`: list of segment objects
-
-Each segment object may include:
-
-- `text`: string
-- `speaker`: string
-- `start`: number
-- `end`: number (must be greater than or equal to `start`)
-
-### Validation Output
-
-The function returns a status string:
-
-- `Invalid JSON: ...` for parse failures or empty input
-- `Invalid JSON structure: ...` for schema/type/order violations
-- `JSON structure is valid with warnings: ...` when JSON is valid but expected
-	content keys are missing
-- `JSON structure is valid` when all checks pass
+1. **Coordinator** — Greets the user, gathers preferences, retrieves the
+   transcript, delegates to the cleaner, and presents the final result.
+2. **Cleaner** — Cleans and formats the raw transcription (filler-word removal,
+   grammar fixes, punctuation) and generates a bullet-point summary, then
+   returns the result to the coordinator.
 # Instructions for setting up this project
 - You will need to create a `.env` file at the project root and add the OpenAI API key to that file. More info can be found in the Readme contained at `professor_framework/README.md`
