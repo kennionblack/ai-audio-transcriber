@@ -1,228 +1,254 @@
-"""Gradio frontend for running `agent.py` with `-v` in the background and showing live logs/output.
-
-Flow:
-1) Upload a file
-2) Click Transcribe (runs `agent.py -v`)
-3) Enter a term and click Lookup
-4) Read outputs
-"""
+"""Gradio frontend for running `agent.py` and showing streamed results."""
 
 import json
 import subprocess
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
+
 import gradio as gr
-# Checks if output looks like valid transcription JSON.
-from tools.quality_assurance_tools import validate_json_structure
+from runtime_events import EVENT_PREFIX
 
 # File types we allow.
 SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac"}
+IDLE_STATUS = "Idle"
+RUNNING_STATUS = "Running"
+READY_TEXT = "Ready."
+DEFAULT_AUTO_REPLY = (
+    "You have the correct audio file. Please transcribe it and return the full "
+    "cleaned transcription plus a summary of key points, action items, and decisions. "
+    "Use reasonable defaults and do not wait for further clarification."
+)
+FINAL_AUTO_REPLY = "No, that's all. Please end the conversation and return the final result."
+LOG_DIR = Path(__file__).parent / "logs"
 
-# Shared app state.
-# We keep one running job at a time.
+# Shared values for the current Gradio session.
 APP_STATE = {
-    "process": None,  # Running process, or None.
-    "logs": [],  # Live console lines.
-    "status": "Idle",  # Idle / Running / Completed / Failed.
-    "raw_output": "",  # Full final output text.
-    "lock": threading.Lock(),  # Keeps thread updates safe.
+    "process": None,
+    "status": IDLE_STATUS,
+    "output": "",
+    "transcription_output": "",
+    "summary_output": "",
+    "reply_count": 0,
+    # Save logs for this run here.
+    "log_path": None,
+    # The UI thread and reader thread both use this state.
+    # The lock keeps them from stepping on each other.
+    "lock": threading.Lock(),
 }
 
 
-def _extract_latest_ai_prompt(logs: list[str]) -> str:
-    """Get the most recent AI question block from logs."""
-    # Find the latest line that starts with "AI:".
-    start_index = -1
-    for i, line in enumerate(logs):
-        if line.strip().startswith("AI:"):
-            start_index = i
+def _split_final_output(output: str) -> tuple[str, str]:
+    """Split final plain-text output into transcription and summary sections."""
+    if not output:
+        return "", ""
 
-    # No AI prompt found.
-    if start_index == -1:
-        return ""
+    # The final result currently puts the summary after a "Summary" heading.
+    marker = "\n\nSummary\n"
+    if marker in output:
+        transcription, summary = output.split(marker, 1)
+        return transcription.strip(), summary.strip()
 
-    # Copy lines until we hit the next section marker.
-    collected: list[str] = []
-    for line in logs[start_index:]:
-        # Stop when a new section starts.
-        if collected and line.strip().startswith("---- "):
-            break
-        collected.append(line)
-    return "\n".join(collected).strip()
+    marker = "\nSummary\n"
+    if marker in output:
+        transcription, summary = output.split(marker, 1)
+        return transcription.strip(), summary.strip()
+
+    return output.strip(), ""
+
+
+def _send_default_reply(process: subprocess.Popen) -> None:
+    """Send the next automatic reply to a running agent process."""
+    with APP_STATE["lock"]:
+        # We only auto-reply twice:
+        # 1) start the work
+        # 2) tell the coordinator we are done
+        if APP_STATE["reply_count"] >= 2 or process.poll() is not None or process.stdin is None:
+            return
+
+        try:
+            reply = DEFAULT_AUTO_REPLY if APP_STATE["reply_count"] == 0 else FINAL_AUTO_REPLY
+            process.stdin.write(reply + "\n")
+            process.stdin.flush()
+            APP_STATE["reply_count"] += 1
+        except Exception as exc:
+            APP_STATE["output"] = f"Auto reply failed: {exc}"
+
+
+def _handle_event(process: subprocess.Popen, payload: dict) -> None:
+    """Apply a backend event to the shared app state."""
+    event_type = payload.get("type")
+
+    if event_type == "user_message":
+        # The backend is waiting for input, so send the next auto-reply.
+        _send_default_reply(process)
+        return
+
+    if event_type == "final_result":
+        # Save the finished result so the UI can show it.
+        transcription, summary = _split_final_output(str(payload.get("content", "")).strip())
+        with APP_STATE["lock"]:
+            APP_STATE["output"] = str(payload.get("content", "")).strip()
+            APP_STATE["transcription_output"] = transcription
+            APP_STATE["summary_output"] = summary
+            APP_STATE["status"] = "Completed"
 
 
 def _reader_thread(process: subprocess.Popen) -> None:
-    """Read process output and save it to APP_STATE."""
-    # We expect stdout to be available.
+    """Read process output and react to structured runtime events."""
     assert process.stdout is not None
+    # This runs on a background thread.
+    # Its job is to watch what agent.py prints without freezing the UI.
+    # As lines come in, it looks for EVENT messages and updates APP_STATE.
+    # Keep plain stdout lines here in case we need them as a fallback result.
+    fallback_output: list[str] = []
+    with APP_STATE["lock"]:
+        # Read the log path that was saved when this run started.
+        log_path = APP_STATE["log_path"]
 
-    # Save each new output line.
-    for line in process.stdout:
-        with APP_STATE["lock"]:
-            APP_STATE["logs"].append(line.rstrip("\n"))
+    log_file = None
+    if log_path is not None:
+        LOG_DIR.mkdir(exist_ok=True)
+        # Open the log file once and keep adding lines to it.
+        log_file = log_path.open("a", encoding="utf-8")
 
-    # When done, store status and full output.
+    try:
+        for line in process.stdout:
+            stripped_line = line.rstrip("\n")
+
+            if log_file is not None:
+                # Write each line right away so the log updates live.
+                log_file.write(stripped_line + "\n")
+                log_file.flush()
+
+            if stripped_line.startswith(EVENT_PREFIX):
+                # The backend prints EVENT lines to stdout.
+                # Gradio reads them here so it knows when to reply or finish.
+                event_json = stripped_line[len(EVENT_PREFIX):].strip()
+                try:
+                    _handle_event(process, json.loads(event_json))
+                except json.JSONDecodeError:
+                    fallback_output.append(stripped_line)
+                continue
+
+            fallback_output.append(stripped_line)
+    finally:
+        if log_file is not None:
+            log_file.close()
+
     return_code = process.wait()
     with APP_STATE["lock"]:
-        APP_STATE["raw_output"] = "\n".join(APP_STATE["logs"]).strip()
+        APP_STATE["process"] = None
+        if APP_STATE["status"] == "Completed":
+            if not APP_STATE["output"]:
+                # If we never got a final event, fall back to raw stdout.
+                APP_STATE["output"] = "\n".join(fallback_output).strip()
+            return
+
+        # If the process ended without a final event, use the exit code.
         APP_STATE["status"] = "Completed" if return_code == 0 else f"Failed (exit {return_code})"
+        APP_STATE["output"] = APP_STATE["output"] or "\n".join(fallback_output).strip()
+        if APP_STATE["status"] == "Completed":
+            transcription, summary = _split_final_output(APP_STATE["output"])
+            APP_STATE["transcription_output"] = transcription
+            APP_STATE["summary_output"] = summary
 
 
-def transcribe(audio_path: str | None) -> tuple[str, str, str, str]:
-    """Start agent.py in the background."""
-    # Check file input.
+def _validate_audio_path(audio_path: str | None) -> str | None:
+    """Return an error message for invalid input, otherwise None."""
+    # The user has to upload a file first.
     if not audio_path:
-        return "No file uploaded. Please choose an audio file first.", "", "", "Idle"
+        return "No file uploaded. Please choose an audio file first."
 
     path = Path(audio_path)
+    # Make sure the file still exists.
     if not path.exists() or not path.is_file():
-        return f"Invalid file path: {path}", "", "", "Idle"
+        return f"Invalid file path: {path}"
 
-    # Check file extension.
+    # Only allow the audio types this app supports.
     if path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
         supported = ", ".join(sorted(SUPPORTED_AUDIO_SUFFIXES))
-        return f"Unsupported file type '{path.suffix}'. Supported types: {supported}", "", "", "Idle"
+        return f"Unsupported file type '{path.suffix}'. Supported types: {supported}"
 
-    # Do not start a second run if one is already active.
+    return None
+
+
+def transcribe(audio_path: str | None) -> tuple[str, str]:
+    """Start agent.py in the background."""
+    # Stop now if the upload is missing or invalid.
+    error = _validate_audio_path(audio_path)
+    if error:
+        return error, ""
+
     with APP_STATE["lock"]:
+        # Do not start a second job while one is already running.
         existing = APP_STATE["process"]
         if existing is not None and existing.poll() is None:
-            current_logs = "\n".join(APP_STATE["logs"])
-            return "A transcription is already running.", current_logs, APP_STATE["raw_output"], APP_STATE["status"]
+            return "A transcription is already running.", ""
 
-    # Start backend process.
-    # `-u` = unbuffered output (live logs), `-v` = verbose mode.
-    command = [sys.executable, "-u", "agent.py", "-v", audio_path]
+    command = [sys.executable, "agent.py", "-v", audio_path]
+    # Run agent.py in the background.
+    # We read stdout for events and write stdin for auto-replies.
     process = subprocess.Popen(
         command,
-        cwd=Path(__file__).parent,  # Run in project folder.
-        stdout=subprocess.PIPE,  # Capture output for UI.
-        stderr=subprocess.STDOUT,  # Keep all output in one stream.
-        stdin=subprocess.PIPE,  # Needed for Send Reply.
-        text=True,  # Read/write strings.
-        bufsize=1,  # Line buffering.
+        cwd=Path(__file__).parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        stdin=subprocess.PIPE,
+        text=True,
+        bufsize=1,
     )
 
-    # Reset state for this new run.
     with APP_STATE["lock"]:
+        # Reset the app state for the new run.
         APP_STATE["process"] = process
-        APP_STATE["logs"] = [f"Running: {' '.join(command)}"]
-        APP_STATE["status"] = "Running"
-        APP_STATE["raw_output"] = ""
+        APP_STATE["status"] = RUNNING_STATUS
+        APP_STATE["output"] = ""
+        APP_STATE["transcription_output"] = ""
+        APP_STATE["summary_output"] = ""
+        APP_STATE["reply_count"] = 0
+        # Give this run its own log file.
+        APP_STATE["log_path"] = LOG_DIR / f"transcription-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
-    # Start background log reader.
+    # Start a background thread to watch stdout while the UI keeps running.
+    # That thread notices events, saves logs, and stores the final result.
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
-    return "Transcription started. Live logs are updating below.", "\n".join(APP_STATE["logs"]), "", "Running"
+    return "Transcription started.", ""
 
 
-def refresh_outputs() -> tuple[str, str, str, str, str]:
-    """Read current state and build values for the UI."""
-    # Read shared state safely.
+def refresh_outputs() -> tuple[str, str]:
+    """Read current state and build the main output text."""
     with APP_STATE["lock"]:
-        logs = list(APP_STATE["logs"])
-        raw_output = APP_STATE["raw_output"]
+        # Copy the shared state before building the UI output.
+        output = APP_STATE["output"]
+        transcription_output = APP_STATE["transcription_output"]
+        summary_output = APP_STATE["summary_output"]
         status = APP_STATE["status"]
 
-    # Build verbose log text.
-    verbose_text = "\n".join(logs).strip()
-    # Show latest AI question in its own box.
-    latest_ai_prompt = _extract_latest_ai_prompt(logs)
-
-    # Main output text depends on status.
+    # Show a simple status while work is still running.
     if status.startswith("Completed"):
-        qa_status = validate_json_structure(raw_output)
-        output_text = f"Transcription complete.\nQA: {qa_status}\n\n{raw_output or '[No output returned]'}"
-    elif status.startswith("Failed"):
-        output_text = f"Transcription failed.\n\n{raw_output or '[No output returned]'}"
-    elif status == "Running":
-        output_text = "Transcription running... watch logs below.\n\nIf agent asks a question, type reply and click Send Reply."
-    else:
-        output_text = "Ready."
-
-    return output_text, verbose_text, raw_output, latest_ai_prompt, status
+        return transcription_output or output or "[No output returned]", summary_output
+    if status.startswith("Failed"):
+        return f"Transcription failed.\n\n{output or '[No output returned]'}", ""
+    if status == RUNNING_STATUS:
+        return "Transcription running...", ""
+    return READY_TEXT, ""
 
 
-def send_reply(reply_text: str) -> tuple[str, str]:
-    """Send user reply to the running process."""
-    # Ignore blank input.
-    reply = reply_text.strip()
-    if not reply:
-        return "", "Reply is empty. Type a response first."
-
-    # Send reply only if process is running and stdin is available.
+def clear_all() -> tuple[None, str, str]:
+    """Reset file input and output."""
     with APP_STATE["lock"]:
-        process = APP_STATE["process"]
-        if process is None or process.poll() is not None or process.stdin is None:
-            return "", "No running process is waiting for input."
-
-        try:
-            # input() reads one line, so send newline.
-            process.stdin.write(reply + "\n")
-            process.stdin.flush()
-            # Add reply to log so users can see it.
-            APP_STATE["logs"].append(f"User(UI): {reply}")
-        except Exception as exc:
-            return reply_text, f"Failed to send reply: {exc}"
-
-    return "", "Reply sent to agent."
-
-
-def lookup(term: str, raw_transcript: str) -> str:
-    """Find lines containing the lookup term (case-insensitive)."""
-    # A transcript is required for lookup.
-    if not raw_transcript.strip():
-        return "No transcription result available yet. Click Transcribe first."
-
-    # A search term is required.
-    query = term.strip()
-    if not query:
-        return "Enter a lookup term first."
-
-    # Start by searching the full output text.
-    search_text = raw_transcript
-    try:
-        # If output is JSON, search common text fields.
-        data = json.loads(raw_transcript)
-        if isinstance(data, dict):
-            parts: list[str] = []
-            # Common transcript fields.
-            if isinstance(data.get("transcription"), str):
-                parts.append(data["transcription"])
-            if isinstance(data.get("text"), str):
-                parts.append(data["text"])
-            # Summary can be text or a list.
-            summary = data.get("summary")
-            if isinstance(summary, str):
-                parts.append(summary)
-            elif isinstance(summary, list):
-                parts.extend(str(item) for item in summary)
-            # Use extracted text when present.
-            if parts:
-                search_text = "\n".join(parts)
-    except json.JSONDecodeError:
-        # If not JSON, keep searching raw text.
-        pass
-
-    # Search line by line so results are easy to read.
-    matches = [line for line in search_text.splitlines() if query.lower() in line.lower()]
-    if not matches:
-        return f"No matches found for '{query}'."
-
-    # Show first 20 matches.
-    preview = "\n".join(matches[:20])
-    return f"Found {len(matches)} matching line(s) for '{query}':\n\n{preview}"
-
-
-def clear_all() -> tuple[None, str, str, str, str, str, str, str]:
-    """Reset file input, output boxes, and hidden state."""
-    # Reset cached values.
-    with APP_STATE["lock"]:
-        APP_STATE["logs"] = []
-        APP_STATE["raw_output"] = ""
-        APP_STATE["status"] = "Idle"
-    # Return values in the same order as clear button outputs.
-    return None, "Ready.", "", "", "", "", "Idle", ""
+        # Clear what the page shows.
+        # This does not stop a job that is already running.
+        APP_STATE["process"] = None
+        APP_STATE["output"] = ""
+        APP_STATE["transcription_output"] = ""
+        APP_STATE["summary_output"] = ""
+        APP_STATE["status"] = IDLE_STATUS
+        APP_STATE["reply_count"] = 0
+        APP_STATE["log_path"] = None
+    return None, READY_TEXT, ""
 
 
 # UI style.
@@ -244,101 +270,49 @@ CSS = """
 
 
 with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
-    # Title and description.
     gr.Markdown("## AI Audio Transcriber Demo", elem_id="app-title")
-    gr.Markdown("This GUI runs `agent.py -v` and supports transcript lookup.")
+    gr.Markdown("Upload an audio file to run the transcription pipeline.")
 
-    # Hidden value that stores latest raw transcript text.
-    transcript_state = gr.State("")
-
-    # Layout: controls left, output right.
+    # Left side: upload and buttons. Right side: results.
     with gr.Row():
         with gr.Column(elem_classes=["panel"]):
-            # File upload.
             audio_input = gr.Audio(
                 label="File Upload",
                 sources=["upload"],
                 type="filepath",
             )
-            # Start transcription.
             transcribe_button = gr.Button("Transcribe", variant="primary")
-            # Term to search for.
-            lookup_input = gr.Textbox(
-                label="Lookup Term",
-                placeholder="Example: action item",
-                lines=1,
-            )
-            # Your answer when agent asks questions.
-            agent_reply_input = gr.Textbox(
-                label="Your Reply To Agent",
-                placeholder="Type your answer when agent asks a question, then click Send Reply.",
-                lines=3,
-            )
-            # Send reply to running process.
-            send_reply_button = gr.Button("Send Reply")
-            # Shows reply result.
-            reply_status = gr.Textbox(label="Reply Status", lines=2)
-            # Run lookup.
-            lookup_button = gr.Button("Lookup")
-            # Clear the UI.
             clear_button = gr.Button("Clear")
 
         with gr.Column(elem_classes=["panel"]):
-            # Main output area.
-            output_display = gr.Textbox(label="Output Display", lines=14)
-            # Latest AI question.
-            agent_prompt_display = gr.Textbox(label="Latest Agent Question", lines=8)
-            # Lookup matches.
-            lookup_display = gr.Textbox(label="Lookup Results", lines=8)
-            # Run status.
-            run_status_display = gr.Textbox(label="Run Status", lines=2, value="Idle")
-            # Live logs.
-            verbose_display = gr.Textbox(label="Verbose Console (-v)", lines=12)
+            transcription_display = gr.Textbox(label="Transcription", lines=14)
+            summary_display = gr.Textbox(label="Summary", lines=10)
 
-    # Refresh UI every 0.5 seconds.
+    # Ask for updates every half second.
     poll_timer = gr.Timer(0.5)
 
-    # Start run button action.
+    # Start the background job.
     transcribe_button.click(
         fn=transcribe,
         inputs=[audio_input],
-        outputs=[output_display, verbose_display, transcript_state, run_status_display],
+        outputs=[transcription_display, summary_display],
     )
 
-    # Auto-refresh action.
+    # Refresh what the page shows.
     poll_timer.tick(
         fn=refresh_outputs,
         inputs=[],
-        outputs=[output_display, verbose_display, transcript_state, agent_prompt_display, run_status_display],
+        outputs=[transcription_display, summary_display],
     )
 
-    # Send reply action.
-    send_reply_button.click(
-        fn=send_reply,
-        inputs=[agent_reply_input],
-        outputs=[agent_reply_input, reply_status],
-    )
-
-    # Lookup action.
-    lookup_button.click(
-        fn=lookup,
-        inputs=[lookup_input, transcript_state],
-        outputs=[lookup_display],
-    )
-
-    # Clear action.
+    # Clear the page inputs and outputs.
     clear_button.click(
         fn=clear_all,
         inputs=[],
         outputs=[
             audio_input,
-            output_display,
-            lookup_display,
-            verbose_display,
-            transcript_state,
-            agent_prompt_display,
-            run_status_display,
-            reply_status,
+            transcription_display,
+            summary_display,
         ],
     )
 
