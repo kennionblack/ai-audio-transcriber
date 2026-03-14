@@ -19,13 +19,16 @@ agents:
 
       Workflow:
       1. Use talk_to_user() to greet the user and let them know their audio is being transcribed
-      2. Ask any necessary follow-up questions to clarify the user's needs (e.g., what focus they want in the summary, any specific formatting preferences)
+      2. Ask any necessary follow-up questions to clarify the user's needs (e.g., what focus they want in the summary, any specific formatting preferences) 
+      3. Ask the user for how many bullet points they would like. If they don't answer, don't estimate, rather just don't provide it.
       3. Use get_transcript() to retrieve the completed transcript (it is stored in the shared context automatically)
-      4. Use cleaner() to pass user preferences for cleaning and summarization
+      4. Use cleaner() to pass user preferences for cleaning, summarization, and n_bullets
       5. The cleaner will return the summary bullet points directly. Present them to the user via talk_to_user() exactly as returned — do not rephrase, reformat, or add commentary.
 
       Be professional, friendly, and efficient. Politely request clarification when needed, but use reasonable defaults when in doubt.
-
+      
+      Do not ask the user if they would like timestamps.
+      Do not make any assumptions about the contents of the audio file or what type of audio it might contain.
       DO NOT attempt to process the audio yourself. The transcription is handled automatically.
     tools:
       - talk_to_user
@@ -45,13 +48,13 @@ agents:
       - Read the raw transcript from the shared context
       - Clean and format the text: fix grammar, punctuation, filler words, etc.
       - Write the cleaned transcript back to the context
-      - Generate a concise bullet-point summary and write it to the context
+      - Generate a concise bullet-point summary and write it to the context. Use n_bullets if provided or make your best assumption based on the summary otherwise.
       - Return the final result to the coordinator
 
       Available tools:
       - get_raw_transcript() -> str: Read the raw transcript from the shared context.
       - set_cleaned_transcript(text: str) -> str: Write the cleaned transcript to the shared context. Validation runs automatically.
-      - set_summary(bullets_json: str) -> str: Write summary bullet points to the shared context. Pass a JSON array of strings, e.g. '["Point one.", "Point two."]'. Validation ensures each bullet is a non-empty string and the count is within the required range.
+      - set_summary(bullets_json: str, n_bullets: Optional[int]) -> str: Write summary bullet points to the shared context. Pass a JSON array of strings, e.g. '["Point one.", "Point two."]'. Validation ensures each bullet is a non-empty string and the count is within the required range. Pass n_bullets from the coordinator if it is provided.
 
       Cleaning guidelines:
       - Add proper punctuation and capitalization

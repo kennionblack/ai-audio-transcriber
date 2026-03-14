@@ -19,7 +19,7 @@ def set_cleaned_transcript(text: str) -> str:
     return "ok"
 
 
-def set_summary(bullets_json: str) -> str:
+def set_summary(bullets_json: str, n_bullets: int) -> str:
     """Store summary bullet points in the shared context.
 
     *bullets_json* must be a JSON array of strings, e.g.:
@@ -36,6 +36,9 @@ def set_summary(bullets_json: str) -> str:
 
     if not isinstance(bullets, list):
         return "[validation_error] expected a JSON array of strings"
+    
+    if len(bullets) > n_bullets:
+        return "[validation_error] invalid number of bullet points"
 
     errors = get_context().set_summary(bullets)
     if errors:
@@ -46,4 +49,5 @@ def set_summary(bullets_json: str) -> str:
 def get_context_snapshot() -> str:
     """Return the full shared context (raw transcript, cleaned transcript, summary, metadata) as JSON."""
     return get_context().snapshot_json()
+
 
