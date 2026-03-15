@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,7 @@ class TranscriptContext:
                 print_verbose(f"[context] {format_name} output written to {out_path}")
         except Exception as exc:
             print_verbose(f"[context] output write failed: {exc}")
+            print(f"[context] output write failed: {exc}", file=sys.stderr)
 
     @staticmethod
     def _next_output_stem(base: str) -> str:

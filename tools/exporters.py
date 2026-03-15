@@ -1,23 +1,38 @@
 from __future__ import annotations
 
 import json
-import textwrap
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from xml.sax.saxutils import escape
-from zipfile import ZIP_DEFLATED, ZipFile
 
+from docx import Document
+from fpdf import FPDF
 
-PDF_PAGE_WIDTH = 612
-PDF_PAGE_HEIGHT = 792
+# PDF layout constants. Units are in points (1/72 inch). These can be adjusted as needed for different formatting preferences.
 PDF_MARGIN = 72
-PDF_FONT_SIZE = 11
-PDF_LEADING = 14
-PDF_WRAP_WIDTH = 92
+PDF_TEXT_SIZE = 11
+PDF_TITLE_SIZE = 16
+PDF_SECTION_SIZE = 13
+PDF_LINE_HEIGHT = 15
+
+# Text replacements for handling Unicode punctuation in PDF generation. This mapping replaces common Unicode punctuation characters with their ASCII equivalents to ensure better compatibility and appearance in the generated PDF files.
+PDF_TEXT_REPLACEMENTS = str.maketrans(
+    {
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2026": "...",
+        "\u2022": "-",
+        "\u00a0": " ",
+    }
+)
 
 
+# This function takes the cleaned transcript, summary, and metadata, and writes them to JSON, DOCX, and PDF files in the specified output directory. It returns a dictionary with the paths to each of the generated files.
 def write_outputs(
     *,
     output_dir: Path,
@@ -41,15 +56,15 @@ def write_outputs(
     }
     json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    paragraphs = _build_document_paragraphs(
+    content = _build_export_content(
         audio_filename=audio_filename,
         cleaned_transcript=cleaned_transcript,
         raw_transcript=raw_transcript,
         summary=summary,
         metadata=metadata,
     )
-    _write_docx(docx_path, paragraphs)
-    _write_pdf(pdf_path, paragraphs)
+    _write_docx(docx_path, content)
+    _write_pdf(pdf_path, content)
 
     return {
         "json": json_path,
@@ -58,252 +73,113 @@ def write_outputs(
     }
 
 
-def _build_document_paragraphs(
+# This helper function constructs a structured content dictionary that includes the audio filename, cleaned transcript (or raw transcript if cleaned is unavailable), summary, and metadata. This structured content is then used by the DOCX and PDF writing functions to generate the respective files with consistent formatting and information.
+def _build_export_content(
     *,
     audio_filename: str | None,
     cleaned_transcript: str | None,
     raw_transcript: str | None,
     summary: list[str],
     metadata: dict[str, Any],
-) -> list[str]:
+) -> dict[str, Any]:
     transcript = (cleaned_transcript or raw_transcript or "").strip() or "[Transcript unavailable]"
-    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
-
-    paragraphs = [
-        "Audio Transcription Output",
-        f"Generated: {generated_at}",
-    ]
-
-    if audio_filename:
-        paragraphs.insert(1, f"Source Audio: {audio_filename}")
-
-    if metadata:
-        paragraphs.extend(["", "METADATA"])
-        for key, value in sorted(metadata.items()):
-            paragraphs.append(f"{key}: {value}")
-
-    paragraphs.extend(["", "SUMMARY"])
-    if summary:
-        paragraphs.extend(f"- {bullet}" for bullet in summary)
-    else:
-        paragraphs.append("[No summary available]")
-
-    paragraphs.extend(["", "TRANSCRIPT"])
-    transcript_lines = transcript.splitlines() or [transcript]
-    paragraphs.extend(transcript_lines)
-
-    return paragraphs
-
-
-def _write_docx(path: Path, paragraphs: list[str]) -> None:
-    created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    document_body = "".join(_docx_paragraph_xml(paragraph) for paragraph in paragraphs)
-
-    document_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"
- xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
- xmlns:o="urn:schemas-microsoft-com:office:office"
- xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
- xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"
- xmlns:v="urn:schemas-microsoft-com:vml"
- xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing"
- xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
- xmlns:w10="urn:schemas-microsoft-com:office:word"
- xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
- xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"
- xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"
- xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk"
- xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml"
- xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
- mc:Ignorable="w14 wp14">
-  <w:body>
-    {document_body}
-    <w:sectPr>
-      <w:pgSz w:w="12240" w:h="15840"/>
-      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
-    </w:sectPr>
-  </w:body>
-</w:document>
-"""
-
-    content_types_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
-  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
-</Types>
-"""
-
-    package_rels_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
-</Relationships>
-"""
-
-    document_rels_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>
-"""
-
-    core_xml = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
- xmlns:dc="http://purl.org/dc/elements/1.1/"
- xmlns:dcterms="http://purl.org/dc/terms/"
- xmlns:dcmitype="http://purl.org/dc/dcmitype/"
- xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-  <dc:title>Audio Transcription Output</dc:title>
-  <dc:creator>ai-audio-transcriber</dc:creator>
-  <cp:lastModifiedBy>ai-audio-transcriber</cp:lastModifiedBy>
-  <dcterms:created xsi:type="dcterms:W3CDTF">{created_at}</dcterms:created>
-  <dcterms:modified xsi:type="dcterms:W3CDTF">{created_at}</dcterms:modified>
-</cp:coreProperties>
-"""
-
-    app_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
- xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>ai-audio-transcriber</Application>
-</Properties>
-"""
-
-    with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
-        archive.writestr("[Content_Types].xml", content_types_xml)
-        archive.writestr("_rels/.rels", package_rels_xml)
-        archive.writestr("word/document.xml", document_xml)
-        archive.writestr("word/_rels/document.xml.rels", document_rels_xml)
-        archive.writestr("docProps/core.xml", core_xml)
-        archive.writestr("docProps/app.xml", app_xml)
-
-
-def _docx_paragraph_xml(text: str) -> str:
-    if text == "":
-        return "<w:p/>"
-
-    escaped = escape(text)
-    return (
-        "<w:p>"
-        "<w:r>"
-        f'<w:t xml:space="preserve">{escaped}</w:t>'
-        "</w:r>"
-        "</w:p>"
-    )
-
-
-def _write_pdf(path: Path, paragraphs: list[str]) -> None:
-    wrapped_lines = _wrap_pdf_lines(paragraphs)
-    lines_per_page = max(1, int((PDF_PAGE_HEIGHT - (PDF_MARGIN * 2)) / PDF_LEADING))
-    pages = [
-        wrapped_lines[i : i + lines_per_page]
-        for i in range(0, len(wrapped_lines), lines_per_page)
-    ] or [["[No content available]"]]
-
-    objects: dict[int, bytes] = {
-        1: b"<< /Type /Catalog /Pages 2 0 R >>",
-        3: b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    generated_at = datetime.now().astimezone().strftime("%m-%d-%Y %H:%M:%S %Z")
+    return {
+        "title": "Audio Transcription Output",
+        "generated_at": generated_at,
+        "audio_filename": audio_filename,
+        "metadata": dict(metadata),
+        "summary": list(summary),
+        "transcript_lines": transcript.splitlines() or [transcript],
     }
 
-    kids: list[str] = []
-    next_object_id = 4
 
-    for page_lines in pages:
-        page_object_id = next_object_id
-        content_object_id = next_object_id + 1
-        next_object_id += 2
+# The following two functions, _write_docx and _write_pdf, are responsible for generating the DOCX and PDF files respectively. They take the structured content dictionary and format it appropriately for each file type, including headings, paragraphs, and metadata sections. The DOCX file is created using the python-docx library, while the PDF file is created using the FPDF library with specific layout settings for margins, font sizes, and line heights to ensure a clean and readable output.
+def _write_docx(path: Path, content: dict[str, Any]) -> None:
+    document = Document()
+    document.add_heading(content["title"], level=1)
 
-        kids.append(f"{page_object_id} 0 R")
-        stream = _pdf_stream(page_lines)
+    if content["audio_filename"]:
+        document.add_paragraph(f"Source Audio: {content['audio_filename']}")
+    document.add_paragraph(f"Generated: {content['generated_at']}")
 
-        objects[page_object_id] = (
-            "<< /Type /Page /Parent 2 0 R "
-            f"/MediaBox [0 0 {PDF_PAGE_WIDTH} {PDF_PAGE_HEIGHT}] "
-            "/Resources << /Font << /F1 3 0 R >> >> "
-            f"/Contents {content_object_id} 0 R >>"
-        ).encode("ascii")
-        objects[content_object_id] = (
-            f"<< /Length {len(stream)} >>\n".encode("ascii")
-            + b"stream\n"
-            + stream
-            + b"\nendstream"
-        )
+    metadata: dict[str, Any] = content["metadata"]
+    if metadata:
+        document.add_heading("Metadata", level=2)
+        for key, value in sorted(metadata.items()):
+            document.add_paragraph(f"{key}: {value}")
 
-    objects[2] = (
-        f"<< /Type /Pages /Count {len(pages)} /Kids [{' '.join(kids)}] >>"
-    ).encode("ascii")
+    document.add_heading("Summary", level=2)
+    summary: list[str] = content["summary"]
+    if summary:
+        for bullet in summary:
+            document.add_paragraph(f"- {bullet}")
+    else:
+        document.add_paragraph("[No summary available]")
 
-    max_object_id = max(objects)
-    pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-    offsets = [0] * (max_object_id + 1)
+    document.add_heading("Transcript", level=2)
+    transcript_lines: list[str] = content["transcript_lines"]
+    for line in transcript_lines:
+        document.add_paragraph(line)
 
-    for object_id in range(1, max_object_id + 1):
-        offsets[object_id] = len(pdf)
-        pdf.extend(f"{object_id} 0 obj\n".encode("ascii"))
-        pdf.extend(objects[object_id])
-        pdf.extend(b"\nendobj\n")
-
-    xref_offset = len(pdf)
-    pdf.extend(f"xref\n0 {max_object_id + 1}\n".encode("ascii"))
-    pdf.extend(b"0000000000 65535 f \n")
-
-    for object_id in range(1, max_object_id + 1):
-        pdf.extend(f"{offsets[object_id]:010d} 00000 n \n".encode("ascii"))
-
-    pdf.extend(
-        (
-            f"trailer\n<< /Size {max_object_id + 1} /Root 1 0 R >>\n"
-            f"startxref\n{xref_offset}\n%%EOF\n"
-        ).encode("ascii")
-    )
-    path.write_bytes(pdf)
+    document.save(str(path))
 
 
-def _wrap_pdf_lines(paragraphs: list[str]) -> list[str]:
-    wrapped: list[str] = []
+# The _write_pdf function creates a PDF file with a structured layout that includes the title, metadata, summary, and transcript. It uses the FPDF library to set up the document with specific margins and font sizes, and it formats the content with headings and line spacing for readability. The function handles cases where certain pieces of information may be unavailable, ensuring that the PDF still provides a clear and organized presentation of the available data.
+def _write_pdf(path: Path, content: dict[str, Any]) -> None:
+    pdf = FPDF(format="letter", unit="pt")
+    pdf.set_title(content["title"])
+    pdf.set_author("ai-audio-transcriber")
+    pdf.set_creator("ai-audio-transcriber")
+    pdf.set_margins(PDF_MARGIN, PDF_MARGIN, PDF_MARGIN)
+    pdf.set_auto_page_break(auto=True, margin=PDF_MARGIN)
+    pdf.set_compression(False)
+    pdf.add_page()
 
-    for paragraph in paragraphs:
-        if paragraph == "":
-            wrapped.append("")
-            continue
+    _pdf_heading(pdf, content["title"], PDF_TITLE_SIZE)
 
-        continuation = "  " if paragraph.startswith("- ") else ""
-        lines = textwrap.wrap(
-            paragraph,
-            width=PDF_WRAP_WIDTH,
-            break_long_words=True,
-            break_on_hyphens=False,
-            replace_whitespace=False,
-            drop_whitespace=False,
-            subsequent_indent=continuation,
-        )
-        wrapped.extend(lines or [""])
+    if content["audio_filename"]:
+        _pdf_line(pdf, f"Source Audio: {content['audio_filename']}")
+    _pdf_line(pdf, f"Generated: {content['generated_at']}")
 
-    return wrapped
+    metadata: dict[str, Any] = content["metadata"]
+    if metadata:
+        _pdf_heading(pdf, "Metadata", PDF_SECTION_SIZE)
+        for key, value in sorted(metadata.items()):
+            _pdf_line(pdf, f"{key}: {value}")
 
+    _pdf_heading(pdf, "Summary", PDF_SECTION_SIZE)
+    summary: list[str] = content["summary"]
+    if summary:
+        for bullet in summary:
+            _pdf_line(pdf, f"- {bullet}")
+    else:
+        _pdf_line(pdf, "[No summary available]")
 
-def _pdf_stream(lines: list[str]) -> bytes:
-    start_y = PDF_PAGE_HEIGHT - PDF_MARGIN
-    commands = [
-        b"BT",
-        f"/F1 {PDF_FONT_SIZE} Tf".encode("ascii"),
-        f"{PDF_LEADING} TL".encode("ascii"),
-        f"{PDF_MARGIN} {start_y} Td".encode("ascii"),
-    ]
+    _pdf_heading(pdf, "Transcript", PDF_SECTION_SIZE)
+    transcript_lines: list[str] = content["transcript_lines"]
+    for line in transcript_lines:
+        _pdf_line(pdf, line)
 
-    for index, line in enumerate(lines):
-        if index > 0:
-            commands.append(b"T*")
-        commands.append(b"(" + _pdf_escape_text(line) + b") Tj")
-
-    commands.append(b"ET")
-    return b"\n".join(commands)
+    pdf.output(str(path))
 
 
-def _pdf_escape_text(text: str) -> bytes:
-    normalized = unicodedata.normalize("NFKC", text)
-    encoded = normalized.encode("cp1252", errors="replace")
-    encoded = encoded.replace(b"\\", b"\\\\")
-    encoded = encoded.replace(b"(", b"\\(")
-    encoded = encoded.replace(b")", b"\\)")
-    return encoded
+# The following two helper functions, _pdf_heading and _pdf_line, are used to format the headings and lines of text in the PDF document. The _pdf_heading function sets the font to bold and adjusts the size for section headings, while the _pdf_line function sets the font for regular text lines. Both functions handle line spacing and ensure that the text is properly aligned within the PDF layout.
+def _pdf_heading(pdf: FPDF, text: str, size: int) -> None:
+    pdf.ln(PDF_LINE_HEIGHT / 2)
+    pdf.set_font("Helvetica", style="B", size=size)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(w=pdf.epw, h=PDF_LINE_HEIGHT, text=_pdf_safe_text(text))
+
+
+# The _pdf_line function is responsible for writing a line of text to the PDF document. It sets the font to a regular style and the specified text size, then uses the multi_cell method to write the text with proper line spacing and alignment within the PDF's margins.
+def _pdf_line(pdf: FPDF, text: str) -> None:
+    pdf.set_font("Helvetica", size=PDF_TEXT_SIZE)
+    pdf.set_x(pdf.l_margin)
+    pdf.multi_cell(w=pdf.epw, h=PDF_LINE_HEIGHT, text=_pdf_safe_text(text))
+
+# This function takes a string of text and applies Unicode normalization and character replacements to ensure that the text is compatible with the PDF generation process.
+def _pdf_safe_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text).translate(PDF_TEXT_REPLACEMENTS)
+    return normalized.encode("latin-1", errors="replace").decode("latin-1")
+
