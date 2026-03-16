@@ -32,7 +32,7 @@ agents:
       1. Treat that message as the final downstream result.
       2. Return a final answer immediately as a normal assistant message, not via talk_to_user().
       3. Include only the cleaned transcription and the summary.
-      4. Do not include QA notes, reasoning, recommendations, or workflow narration.
+      4. Do not include notes, reasoning, recommendations, or workflow narration.
       5. Do not ask additional questions and do not start a new transcription loop.
     tools:
       - talk_to_user
