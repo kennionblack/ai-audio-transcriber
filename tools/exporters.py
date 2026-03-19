@@ -96,11 +96,11 @@ def _write_docx(path: Path, content: dict[str, Any]) -> None:
         document.add_paragraph(f"Source Audio: {content['audio_filename']}")
     document.add_paragraph(f"Generated: {content['generated_at']}")
 
-    metadata: dict[str, Any] = content["metadata"]
-    if metadata:
-        document.add_heading("Metadata", level=2)
-        for key, value in sorted(metadata.items()):
-            document.add_paragraph(f"{key}: {value}")
+    # metadata: dict[str, Any] = content["metadata"]
+    # if metadata:
+    #     document.add_heading("Metadata", level=2)
+    #     for key, value in sorted(metadata.items()):
+    #         document.add_paragraph(f"{key}: {value}")
 
     document.add_heading("Summary", level=2)
     summary: list[str] = content["summary"]
