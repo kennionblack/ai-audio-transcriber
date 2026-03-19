@@ -1,32 +1,93 @@
 # ai-audio-transcriber
-An end-to-end, multi-agent pipeline that turns raw interview audio into structured qualitative insights.
 
+An end-to-end, multi-agent pipeline that turns raw audio input into structured qualitative insights. Upload an audio file (interview, lecture, meeting, etc.) and the pipeline will transcribe, clean, and summarize it automatically.
 
-## Instructions for working on this project with Docker and VS Code
-1. You'll need to have Docker installed. You can install [Docker Desktop](https://www.docker.com/products/docker-desktop/) or whatever other method you prefer. As students, I believe we should qualify for a Docker Personal license. 
-2. You will need to install the "Dev Containers" extension for VS Code [here](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers).
-3. Clone down the repository. 
-4. Open the ai-audio-transcriber folder in VS Code. It should automatically give you a prompt saying that you can re-open the project in a dev container. If not, you can open the command palette (Ctrl+Shift+P on Windows) and search for "Dev Containers: Re-open in container". 
-5. It will take a few minutes to set everything up the first time, but then you should be able to work on the project from within the container. 
-    - If there are squiggles on the imports, try also opening the command palette and searching "Python: Select Interpreter" and selecting it, then choosing the version at `/usr/local/bin/python`. It should be version 3.12. 
-6. If requirements are tweaked, it will probably become necessary to rebuild the container. You can do so with the command palette by searching for "Dev Containers: Rebuild Container Without Cache". 
+## Prerequisites
 
-### Other notes: 
-- Ctrl+\` will let you open a terminal where you can run the relevant commands, such as `python agent.py agents.yaml`
-- The environment should be set up such that if you place an audio file in your local `/audio` folder, it should become available within the container. This should help with testing. It should also be set up to ignore all files in that folder when committing so we don't try to commit large files.
-- I was not able to test this on any other system so let me know if there are any issues. 
-- If we ever needed to actually deploy the app on some kind of production server that uses docker containers, we might need to do some further tweaking. I didn't have any way to test that. I think that's probably outside of the scope of the class, though. 
-- We will probably need to continue to tweak the requirements and Dockerfile as we learn more about the needs of the project.
+- **Python 3.12+**
+- **ffmpeg** — required by the audio processing libraries (`pydub`, `faster-whisper`)
+  - Linux: `sudo apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
+  - Windows: [download from ffmpeg.org](https://ffmpeg.org/download.html)
+- **OpenAI API key** with access to the Chat/Responses API and access to the `gpt-5-mini` model
 
+## Environment setup
+
+This project assumes a Unix-based terminal (Linux, macOS, WSL). Your mileage may vary on Windows, Powershell, or other terminals.
+
+Secrets are loaded from a `.env` file at the project root. Create one and add your API key:
+
+```bash
+echo "OPENAI_API_KEY=your_api_key_here" >> .env
+```
+
+## Usage
+
+This project can be run in two modes. The first mode is a pure command line executable, while the second mode creates a web GUI. Both are explained below.
+
+### Command line
+
+```bash
+python3 agent.py [-h] [-v] path/to/audio/file
+```
+
+| Flag | Description |
+|------|-------------|
+| `-h` | Show help and exit |
+| `-v` | Enable verbose/debug logging for each pipeline step |
+
+Supported audio formats: `.mp3`, `.wav`, `.m4a`, `.flac`
+
+Output files (cleaned transcript, summary JSON) are written to the `output/` directory.
+
+### GUI (Gradio frontend)
+
+```bash
+python3 gradio_app.py
+```
+
+This launches a web UI at **http://localhost:7860** where you can:
+- Upload an audio file via drag-and-drop or file picker
+- Click **Transcribe** to run the full agent pipeline
+- View the cleaned transcription and bullet-point summary as they complete
+
+Under the hood, `gradio_app.py` spawns `agent.py` as a subprocess and communicates via a structured event protocol (`runtime_events.py`). The UI auto-replies to the coordinator agent so the pipeline runs hands-free. Logs for each run are saved to a `logs/` directory.
+
+## Installation
+
+### Local (no container)
+
+```bash
+pip install -r requirements.txt
+```
+
+### Docker Compose
+
+```bash
+docker compose up --build
+docker compose exec app bash
+```
+
+This builds from `Dockerfile.dev` and volume-mounts the project into the container, so local edits are reflected immediately.
+
+### VS Code Dev Container (recommended for development)
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2. Install the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension for VS Code.
+3. Clone the repository and open the folder in VS Code.
+4. When prompted, select **Re-open in Container** in the bottom right corner (or use the command palette: `Dev Containers: Re-open in container`).
+5. The first build will take a few minutes to install everything, but subsequent starts should be fast.
+6. If dependencies change, rebuild via the command palette: `Dev Containers: Rebuild Container Without Cache`.
+
+**Notes:**
+- If import squiggles appear, use the command palette → `Python: Select Interpreter` → choose `/usr/local/bin/python` (3.12).
+- Place audio files in your local repo's `audio/` folder as these contents will be mirrored to the container. The contents of this folder are included in the .gitignore to avoid large file uploads.
 
 ## Pipeline
 
-The pipeline consists of two agents:
+The agent pipeline is defined in `agents.yaml` and consists of two agents:
 
-1. **Coordinator** — Greets the user, gathers preferences, retrieves the
-   transcript, delegates to the cleaner, and presents the final result.
-2. **Cleaner** — Cleans and formats the raw transcription (filler-word removal,
-   grammar fixes, punctuation) and generates a bullet-point summary, then
-   returns the result to the coordinator.
-# Instructions for setting up this project
-- You will need to create a `.env` file at the project root and add the OpenAI API key to that file. More info can be found in the Readme contained at `professor_framework/README.md`
+1. **Coordinator** — Greets the user, gathers preferences, retrieves the transcript, delegates to the cleaner, and presents the final result.
+2. **Cleaner** — Cleans and formats the raw transcription (filler-word removal, grammar fixes, punctuation) and generates a bullet-point summary, then returns the result to the coordinator.
+
+Audio transcription is handled by [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running locally (no external API call for transcription). The Whisper model runs on CPU by default (`base.en`, int8 precision).
