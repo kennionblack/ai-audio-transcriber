@@ -7,4 +7,6 @@ __pycache__
 /output/*
 !/output/.gitkeep
 
+logs/*
+
 .pytest_cache
