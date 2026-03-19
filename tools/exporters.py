@@ -135,11 +135,11 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
         _pdf_line(pdf, f"Source Audio: {content['audio_filename']}")
     _pdf_line(pdf, f"Generated: {content['generated_at']}")
 
-    metadata: dict[str, Any] = content["metadata"]
-    if metadata:
-        _pdf_heading(pdf, "Metadata", PDF_SECTION_SIZE)
-        for key, value in sorted(metadata.items()):
-            _pdf_line(pdf, f"{key}: {value}")
+    # metadata: dict[str, Any] = content["metadata"]
+    # if metadata:
+    #     _pdf_heading(pdf, "Metadata", PDF_SECTION_SIZE)
+    #     for key, value in sorted(metadata.items()):
+    #         _pdf_line(pdf, f"{key}: {value}")
 
     _pdf_heading(pdf, "Summary", PDF_SECTION_SIZE)
     summary: list[str] = content["summary"]
