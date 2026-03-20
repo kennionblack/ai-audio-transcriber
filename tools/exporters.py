@@ -68,7 +68,6 @@ def write_outputs(
 
 # This helper function constructs a structured content dictionary that includes the audio filename, cleaned transcript (or raw transcript if cleaned is unavailable), summary, and metadata. This structured content is then used by the DOCX and PDF writing functions to generate the respective files with consistent formatting and information.
 def _build_export_content(
-    *,
     audio_filename: str | None,
     cleaned_transcript: str | None,
     raw_transcript: str | None,
