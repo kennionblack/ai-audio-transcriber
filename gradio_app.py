@@ -66,6 +66,11 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
         _send_default_reply(process)
         return
 
+    # Ignore events from a process that is no longer active.
+    with APP_STATE["lock"]:
+        if APP_STATE["process"] is not process:
+            return
+
     if event_type == "transcript_ready":
         with APP_STATE["lock"]:
             APP_STATE["transcription_output"] = str(payload.get("transcript", "")).strip()
@@ -228,8 +233,10 @@ def refresh_outputs() -> tuple[str, str]:
 def clear_all() -> tuple[None, str, str]:
     """Reset file input and output."""
     with APP_STATE["lock"]:
-        # Clear what the page shows.
-        # This does not stop a job that is already running.
+        # Kill the running process so the reader thread exits naturally.
+        proc = APP_STATE["process"]
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
         APP_STATE["process"] = None
         APP_STATE["output"] = ""
         APP_STATE["transcription_output"] = ""
