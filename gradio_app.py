@@ -55,6 +55,18 @@ def _split_final_output(output: str) -> tuple[str, str]:
         transcription, summary = output.split(marker, 1)
         return transcription.strip(), summary.strip()
 
+    lines = output.strip().splitlines()
+    summary_start = None
+    for index, line in enumerate(lines):
+        if line.startswith("- "):
+            summary_start = index
+            break
+
+    if summary_start is not None:
+        transcription_lines = lines[:summary_start]
+        summary_lines = lines[summary_start:]
+        return "\n".join(transcription_lines).strip(), "\n".join(summary_lines).strip()
+
     return output.strip(), ""
 
 
@@ -87,9 +99,13 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
 
     if event_type == "final_result":
         # Save the finished result so the UI can show it.
-        transcription, summary = _split_final_output(str(payload.get("content", "")).strip())
+        content = str(payload.get("content", "")).strip()
+        transcription = str(payload.get("transcription", "")).strip()
+        summary = str(payload.get("summary", "")).strip()
+        if not transcription and not summary:
+            transcription, summary = _split_final_output(content)
         with APP_STATE["lock"]:
-            APP_STATE["output"] = str(payload.get("content", "")).strip()
+            APP_STATE["output"] = content
             APP_STATE["transcription_output"] = transcription
             APP_STATE["summary_output"] = summary
             APP_STATE["status"] = "Completed"
