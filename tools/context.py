@@ -1,10 +1,12 @@
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tools.exporters import write_outputs
 from tools import print_verbose
 
 # This allows us to set our own output directory in an env var if desired
@@ -89,36 +91,44 @@ class TranscriptContext:
         return list(self.summary)
 
     def _on_complete(self) -> None:
-        # Write JSON output to output_directory/file_name.json
-        # Name conflicts write to file_name_1.json, file_name_2.json, etc. to avoid overwriting previous runs
+        # Write aligned output artifacts with a shared stem.
         try:
-            OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
             base = Path(self.audio_filename).stem if self.audio_filename else "summary"
-            filename = self._next_filename(base)
-            payload = {
-                "cleaned_transcript": self.cleaned_transcript,
-                "summary": list(self.summary),
-                "metadata": dict(self.metadata),
-            }
-            out_path = OUTPUT_DIR / filename
-            out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-            print_verbose(f"[context] output written to {out_path}")
+            stem = self._next_output_stem(base)
+            artifact_paths = write_outputs(
+                output_dir=OUTPUT_DIR,
+                stem=stem,
+                cleaned_transcript=self.cleaned_transcript,
+                summary=list(self.summary),
+                metadata=dict(self.metadata),
+                audio_filename=self.audio_filename,
+                raw_transcript=self.raw_transcript,
+            )
+            for format_name, out_path in artifact_paths.items():
+                print_verbose(f"[context] {format_name} output written to {out_path}")
         except Exception as exc:
             print_verbose(f"[context] output write failed: {exc}")
+            print(f"[context] output write failed: {exc}", file=sys.stderr)
 
     @staticmethod
-    def _next_filename(base: str) -> str:
-        first = f"{base}.json"
-        if not (OUTPUT_DIR / first).exists():
-            return first
+    def _next_output_stem(base: str) -> str:
+        extensions = {".json", ".docx", ".pdf"}
+        if not OUTPUT_DIR.exists():
+            return base
 
-        pattern = re.compile(rf"^{re.escape(base)}_(\d+)\.json$")
+        if not any((OUTPUT_DIR / f"{base}{extension}").exists() for extension in extensions):
+            return base
+
+        pattern = re.compile(rf"^{re.escape(base)}(?:_(\d+))?$")
         highest = 0
         for entry in OUTPUT_DIR.iterdir():
-            m = pattern.match(entry.name)
+            if entry.suffix.lower() not in extensions:
+                continue
+            m = pattern.match(entry.stem)
             if m:
-                highest = max(highest, int(m.group(1)))
-        return f"{base}_{highest + 1}.json"
+                suffix = m.group(1)
+                highest = max(highest, int(suffix) if suffix else 0)
+        return f"{base}_{highest + 1}"
 
     def set_metadata(self, key: str, value: Any) -> str:
         self.metadata[key] = value

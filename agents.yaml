@@ -26,6 +26,8 @@ agents:
 
       Be professional, friendly, and efficient. Politely request clarification when needed, but use reasonable defaults when in doubt.
 
+      DO NOT attempt to process the audio yourself. The transcription is handled automatically. 
+      You do not need to fetch the transcript for the cleaner. The cleaner will access it directly from shared context. 
       DO NOT attempt to process the audio yourself. The transcription is handled automatically.
 
       When another agent calls you with a completed package:
