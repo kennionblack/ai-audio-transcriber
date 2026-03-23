@@ -8,6 +8,7 @@ from pathlib import Path
 from openai import AsyncOpenAI
 
 from config import Agent, load_config
+from runtime_events import emit_event
 from tools.toolbox import ToolBox
 from tools.context import get_context
 import tools
@@ -30,6 +31,30 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
 ctx = get_context()
 
+def _format_final_package(message: str) -> str | None:
+    """Return final user-facing text when `message` is a completed package."""
+    # Try to read the message as JSON.
+    try:
+        payload = json.loads(message)
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+    # If this is not a JSON object, it is not a finished package.
+    if not isinstance(payload, dict):
+        return None
+
+    transcription = payload.get("transcription")
+    summary = payload.get("summary")
+    # A finished package must have a transcription string and a summary list.
+    if not isinstance(transcription, str):
+        return None
+    if not isinstance(summary, list) or not all(isinstance(item, str) for item in summary):
+        return None
+
+    # Turn the JSON package into the plain text format the UI expects.
+    summary_lines = "\n".join(f"- {item}" for item in summary)
+    return f"{transcription.strip()}\n\nSummary\n{summary_lines}".strip()
+
 async def get_transcript() -> str:
     """Retrieve the raw transcript. Blocks until transcription is complete, then stores it in the shared context."""
     transcript = await tool_box.get_transcript()
@@ -40,8 +65,23 @@ tool_box.tool(get_transcript)
 tools.register_all_tools(tool_box)
 
 def add_agent_tools(agents: dict[str, Agent], tool_box: ToolBox):
+    def make_agent_tool(agent: Agent):
+        async def function(message: str) -> str:
+            # If another agent sends the coordinator a finished package,
+            # stop here and return the final text right away.
+            if agent["name"] == "coordinator":
+                final_output = _format_final_package(message)
+                if final_output is not None:
+                    return final_output
+            # Otherwise run the agent normally.
+            return await run_agent(agent, tool_box, message)
+
+        function.__name__ = agent["name"]
+        function.__doc__ = agent["description"]
+        return function
+
     for name, agent in agents.items():
-        tool_box.add_agent_tool(agent, run_agent)
+        tool_box.tool(make_agent_tool(agent))
 
 
 async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
@@ -123,7 +163,8 @@ async def async_main(audio_path: Path):
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
     main_agent = config["main"]
-    await run_agent(agents[main_agent], tool_box, None)
+    result = await run_agent(agents[main_agent], tool_box, None)
+    emit_event("final_result", content=result)
 
 def main(audio_path: Path):
     if not validate_audio_path(audio_path):
