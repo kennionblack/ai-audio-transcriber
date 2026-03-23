@@ -8,6 +8,7 @@ from typing import Any
 
 from tools.exporters import write_outputs
 from tools import print_verbose
+from runtime_events import emit_event
 
 # This allows us to set our own output directory in an env var if desired
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "output"))
@@ -71,6 +72,7 @@ class TranscriptContext:
             return errors
         self.cleaned_transcript = text
         print_verbose("[context] cleaned_transcript stored")
+        emit_event("transcript_ready", transcript=text)
         return None
 
     def get_cleaned_transcript(self) -> str:
@@ -84,6 +86,7 @@ class TranscriptContext:
             return errors
         self.summary = list(bullets)
         print_verbose(f"[context] summary stored ({len(bullets)} bullets)")
+        emit_event("summary_ready", summary=list(bullets))
         self._on_complete()
         return None
 
