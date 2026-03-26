@@ -29,7 +29,7 @@ SUPPORTED_LANGUAGES: dict[str, str] = {
 def parse_language(raw: str) -> str:
     code = raw.strip().lower()
     if not code:
-        print("Error: a language code is required.", file=sys.stderr)
+        print("Error: a language code is required.")
         sys.exit(1)
 
     if code not in SUPPORTED_LANGUAGES:
@@ -118,7 +118,7 @@ async def run_translation(
 
     transcript = ctx.cleaned_transcript or ""
     if not transcript.strip():
-        print("Error: no cleaned transcript available for translation.", file=sys.stderr)
+        print("Error: no cleaned transcript available for translation.")
         return
 
     summary = ctx.get_summary()

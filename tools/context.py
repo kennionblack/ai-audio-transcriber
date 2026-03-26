@@ -115,7 +115,7 @@ class TranscriptContext:
                 print_verbose(f"[context] {format_name} output written to {out_path}")
         except Exception as exc:
             print_verbose(f"[context] output write failed: {exc}")
-            print(f"[context] output write failed: {exc}", file=sys.stderr)
+            print(f"[context] output write failed: {exc}")
 
         if self.on_translation_ready is not None:
             self.on_translation_ready(stem)
