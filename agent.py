@@ -30,6 +30,7 @@ def print_verbose(*args, **kwargs):
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
 ctx = get_context()
+mode = os.getenv("AGENT_MODE", "interactive")
 
 def _format_final_package(message: str) -> str | None:
     """Return final user-facing text when `message` is a completed package."""
@@ -162,7 +163,10 @@ async def async_main(audio_path: Path):
     config = load_config(Path("agents.yaml"))
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
-    main_agent = config["main"]
+    if mode == "auto":
+        main_agent=config.get("automated", config["main"])
+    else:
+        main_agent=config["main"]
     result = await run_agent(agents[main_agent], tool_box, None)
     emit_event("final_result", content=result)
 

@@ -83,3 +83,4 @@ agents:
       - get_context_snapshot
 
 main: coordinator
+automated: cleaner

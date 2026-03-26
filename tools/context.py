@@ -39,6 +39,7 @@ def _validate_summary(bullets: list[str], min_bullets: int, max_bullets: int) ->
 
 @dataclass
 class TranscriptContext:
+    mode: str = "interactive"
     raw_transcript: str | None = None
     cleaned_transcript: str | None = None
     # This field syntax makes the summary list mutable in a dataclass

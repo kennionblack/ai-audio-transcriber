@@ -1,6 +1,7 @@
 """Gradio frontend for running `agent.py` and showing streamed results."""
 
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -30,7 +31,6 @@ APP_STATE = {
     "output": "",
     "transcription_output": "",
     "summary_output": "",
-    "reply_count": 0,
     # Save logs for this run here.
     "log_path": None,
     # The UI thread and reader thread both use this state.
@@ -39,32 +39,9 @@ APP_STATE = {
 }
 
 
-def _send_default_reply(process: subprocess.Popen) -> None:
-    """Send the next automatic reply to a running agent process."""
-    with APP_STATE["lock"]:
-        # We only auto-reply twice:
-        # 1) start the work
-        # 2) tell the coordinator we are done
-        if APP_STATE["reply_count"] >= 2 or process.poll() is not None or process.stdin is None:
-            return
-
-        try:
-            reply = DEFAULT_AUTO_REPLY if APP_STATE["reply_count"] == 0 else FINAL_AUTO_REPLY
-            process.stdin.write(reply + "\n")
-            process.stdin.flush()
-            APP_STATE["reply_count"] += 1
-        except Exception as exc:
-            APP_STATE["output"] = f"Auto reply failed: {exc}"
-
-
 def _handle_event(process: subprocess.Popen, payload: dict) -> None:
     """Apply a backend event to the shared app state."""
     event_type = payload.get("type")
-
-    if event_type == "user_message":
-        # The backend is waiting for input, so send the next auto-reply.
-        _send_default_reply(process)
-        return
 
     # Ignore events from a process that is no longer active.
     with APP_STATE["lock"]:
@@ -184,15 +161,18 @@ def transcribe(audio_path: str | None) -> tuple[str, str]:
 
     command = [sys.executable, "agent.py", "-v", audio_path]
     # Run agent.py in the background.
-    # We read stdout for events and write stdin for auto-replies.
+    # We read stdout for events.
+    env = os.environ.copy()
+    env["AGENT_MODE"] = "auto"
+
     process = subprocess.Popen(
         command,
         cwd=Path(__file__).parent,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        stdin=subprocess.PIPE,
         text=True,
         bufsize=1,
+        env=env,
     )
 
     with APP_STATE["lock"]:
@@ -202,7 +182,6 @@ def transcribe(audio_path: str | None) -> tuple[str, str]:
         APP_STATE["output"] = ""
         APP_STATE["transcription_output"] = ""
         APP_STATE["summary_output"] = ""
-        APP_STATE["reply_count"] = 0
         # Give this run its own log file.
         APP_STATE["log_path"] = LOG_DIR / f"transcription-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
@@ -242,7 +221,6 @@ def clear_all() -> tuple[None, str, str]:
         APP_STATE["transcription_output"] = ""
         APP_STATE["summary_output"] = ""
         APP_STATE["status"] = IDLE_STATUS
-        APP_STATE["reply_count"] = 0
         APP_STATE["log_path"] = None
     return None, READY_TEXT, ""
 
