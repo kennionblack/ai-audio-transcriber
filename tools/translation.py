@@ -94,6 +94,7 @@ async def _translate_to_language(
 
     ctx = get_context()
     ctx.set_translation(lang, translated)
+    ctx.set_translated_summary(lang, translated_summary)
 
     paths = write_outputs(
         output_dir=output_dir,

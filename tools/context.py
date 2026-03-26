@@ -48,6 +48,8 @@ class TranscriptContext:
     audio_filename: str | None = None
     # Translations keyed by language code (e.g. {"zh": "...", "fr": "..."})
     translations: dict[str, str] = field(default_factory=dict)
+    # Translated summaries keyed by language code (e.g. {"zh": ["...", "..."], "fr": ["...", "..."]})
+    translated_summaries: dict[str, list[str]] = field(default_factory=dict)
     # Callback invoked when transcription completed, currently used to trigger translation when language specified
     on_translation_ready: Any = None
 
@@ -154,6 +156,14 @@ class TranscriptContext:
     def get_translation(self, language_code: str) -> str | None:
         return self.translations.get(language_code)
 
+    def set_translated_summary(self, language_code: str, bullets: list[str]) -> None:
+        self.translated_summaries[language_code] = list(bullets)
+        print_verbose(f"[context] translated_summary[{language_code!r}] stored ({len(bullets)} bullets)")
+        emit_event("translated_summary_ready", language=language_code, summary=list(bullets))
+
+    def get_translated_summary(self, language_code: str) -> list[str] | None:
+        return self.translated_summaries.get(language_code)
+
     def set_metadata(self, key: str, value: Any) -> str:
         self.metadata[key] = value
         print_verbose(f"[context] metadata[{key!r}] set")
@@ -167,6 +177,7 @@ class TranscriptContext:
             "summary": list(self.summary),
             "metadata": dict(self.metadata),
             "translations": dict(self.translations),
+            "translated_summaries": {k: list(v) for k, v in self.translated_summaries.items()},
         }
 
     def snapshot_json(self) -> str:
