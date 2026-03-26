@@ -46,6 +46,10 @@ class TranscriptContext:
     # If we want to add metadata like audio duration, speaker names, or other relevant details we can store it here and have tools to set/get specific metadata keys as needed
     metadata: dict[str, Any] = field(default_factory=dict)
     audio_filename: str | None = None
+    # Translations keyed by language code (e.g. {"zh": "...", "fr": "..."})
+    translations: dict[str, str] = field(default_factory=dict)
+    # Callback invoked when transcription completed, currently used to trigger translation when language specified
+    on_translation_ready: Any = None
 
     # These values are arbitrary, we can discuss what amount of bullet points should be generated 
     # If we want the user to choose their own amount of bullet points, we can write a tool to store that amount in this context and have the validation read from that instead of hardcoded values
@@ -113,6 +117,9 @@ class TranscriptContext:
             print_verbose(f"[context] output write failed: {exc}")
             print(f"[context] output write failed: {exc}", file=sys.stderr)
 
+        if self.on_translation_ready is not None:
+            self.on_translation_ready(stem)
+
     @staticmethod
     def _next_output_stem(base: str) -> str:
         extensions = {".json", ".docx", ".pdf"}
@@ -133,6 +140,20 @@ class TranscriptContext:
                 highest = max(highest, int(suffix) if suffix else 0)
         return f"{base}_{highest + 1}"
 
+    def set_translation(self, language_code: str, text: str) -> list[str] | None:
+        # Reusing _validate_transcript here might be risky with different languages
+        # For the moment it just checks for an empty string but that could be tightened later
+        errors = _validate_transcript(text)
+        if errors:
+            return errors
+        self.translations[language_code] = text
+        print_verbose(f"[context] translation[{language_code!r}] stored")
+        emit_event("translation_ready", language=language_code, transcript=text)
+        return
+
+    def get_translation(self, language_code: str) -> str | None:
+        return self.translations.get(language_code)
+
     def set_metadata(self, key: str, value: Any) -> str:
         self.metadata[key] = value
         print_verbose(f"[context] metadata[{key!r}] set")
@@ -145,6 +166,7 @@ class TranscriptContext:
             "cleaned_transcript": self.cleaned_transcript,
             "summary": list(self.summary),
             "metadata": dict(self.metadata),
+            "translations": dict(self.translations),
         }
 
     def snapshot_json(self) -> str:
