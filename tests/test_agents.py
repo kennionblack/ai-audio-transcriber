@@ -10,6 +10,8 @@ from config import load_config
 from agent import tool_box
 from tools.transcription import load_audio_file
 from difflib import SequenceMatcher
+import os
+os.environ["OPENAI_API_KEY"] = "test-key"
 
 base_dir = Path(__file__).resolve().parents[1]
 
