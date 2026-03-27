@@ -39,6 +39,8 @@ def _validate_summary(bullets: list[str], min_bullets: int, max_bullets: int) ->
 
 @dataclass
 class TranscriptContext:
+    # There are two modes, interactive and auto. Interactive is the regular flow,
+    # and auto skips the coordinator (mostly for use by frontend and with tests)
     mode: str = "interactive"
     raw_transcript: str | None = None
     cleaned_transcript: str | None = None

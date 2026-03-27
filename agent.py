@@ -27,7 +27,10 @@ def print_verbose(*args, **kwargs):
     if VERBOSE:
         print(*args, **kwargs)
 
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+def _get_client():
+    return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+client = _get_client()
 tool_box = ToolBox()
 ctx = get_context()
 mode = os.getenv("AGENT_MODE", "interactive")
