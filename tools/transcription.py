@@ -1,38 +1,26 @@
 import os
 from faster_whisper import WhisperModel
-from tools import print_verbose
 
-MODEL_NAME = "medium"
+MODEL_NAME = "medium" 
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 
 model = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
 
-
-def load_audio_file(file_path: str, language: str | None = None) -> str:
+def load_audio_file(file_path: str) -> str:
     if not os.path.exists(file_path):
         return f"Error: File not found at {file_path}"
 
     try:
-        print_verbose(f"Processing: {os.path.basename(file_path)}")
-
-        segments, info = model.transcribe(
-            file_path,
-            beam_size=5,
-            language=language,
-            task="transcribe"
-        )
-
-        print_verbose(
-            f"Detected language: '{info.language}' "
-            f"(Probability: {info.language_probability:.2f})"
-        )
-
+        
+        segments, info = model.transcribe(file_path, beam_size=5)
+        
         full_transcript = []
-
+        
         for segment in segments:
             text = segment.text.strip()
             full_transcript.append(text)
+            
 
         return " ".join(full_transcript)
 
