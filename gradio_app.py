@@ -39,25 +39,6 @@ APP_STATE = {
 }
 
 
-def _split_final_output(output: str) -> tuple[str, str]:
-    """Split final plain-text output into transcription and summary sections."""
-    if not output:
-        return "", ""
-
-    # The final result currently puts the summary after a "Summary" heading.
-    marker = "\n\nSummary\n"
-    if marker in output:
-        transcription, summary = output.split(marker, 1)
-        return transcription.strip(), summary.strip()
-
-    marker = "\nSummary\n"
-    if marker in output:
-        transcription, summary = output.split(marker, 1)
-        return transcription.strip(), summary.strip()
-
-    return output.strip(), ""
-
-
 def _send_default_reply(process: subprocess.Popen) -> None:
     """Send the next automatic reply to a running agent process."""
     with APP_STATE["lock"]:
@@ -85,13 +66,28 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
         _send_default_reply(process)
         return
 
+    # Ignore events from a process that is no longer active.
+    with APP_STATE["lock"]:
+        if APP_STATE["process"] is not process:
+            return
+
+    if event_type == "transcript_ready":
+        with APP_STATE["lock"]:
+            APP_STATE["transcription_output"] = str(payload.get("transcript", "")).strip()
+            if not APP_STATE["summary_output"]:
+                APP_STATE["summary_output"] = "Summary loading..."
+        return
+
+    if event_type == "summary_ready":
+        bullets = payload.get("summary") or []
+        summary = "\n".join(f"- {b}" for b in bullets if isinstance(b, str) and b.strip())
+        with APP_STATE["lock"]:
+            APP_STATE["summary_output"] = summary
+        return
+
     if event_type == "final_result":
-        # Save the finished result so the UI can show it.
-        transcription, summary = _split_final_output(str(payload.get("content", "")).strip())
         with APP_STATE["lock"]:
             APP_STATE["output"] = str(payload.get("content", "")).strip()
-            APP_STATE["transcription_output"] = transcription
-            APP_STATE["summary_output"] = summary
             APP_STATE["status"] = "Completed"
 
 
@@ -149,10 +145,9 @@ def _reader_thread(process: subprocess.Popen) -> None:
         # If the process ended without a final event, use the exit code.
         APP_STATE["status"] = "Completed" if return_code == 0 else f"Failed (exit {return_code})"
         APP_STATE["output"] = APP_STATE["output"] or "\n".join(fallback_output).strip()
-        if APP_STATE["status"] == "Completed":
-            transcription, summary = _split_final_output(APP_STATE["output"])
-            APP_STATE["transcription_output"] = transcription
-            APP_STATE["summary_output"] = summary
+        if APP_STATE["status"] == "Completed" and not APP_STATE["transcription_output"]:
+            # No transcript_ready event was received; show raw output as a fallback.
+            APP_STATE["transcription_output"] = APP_STATE["output"]
 
 
 def _validate_audio_path(audio_path: str | None) -> str | None:
@@ -226,21 +221,22 @@ def refresh_outputs() -> tuple[str, str]:
         summary_output = APP_STATE["summary_output"]
         status = APP_STATE["status"]
 
-    # Show a simple status while work is still running.
     if status.startswith("Completed"):
         return transcription_output or output or "[No output returned]", summary_output
     if status.startswith("Failed"):
         return f"Transcription failed.\n\n{output or '[No output returned]'}", ""
     if status == RUNNING_STATUS:
-        return "Transcription running...", ""
+        return transcription_output or "Transcription running...", summary_output
     return READY_TEXT, ""
 
 
 def clear_all() -> tuple[None, str, str]:
     """Reset file input and output."""
     with APP_STATE["lock"]:
-        # Clear what the page shows.
-        # This does not stop a job that is already running.
+        # Kill the running process so the reader thread exits naturally.
+        proc = APP_STATE["process"]
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
         APP_STATE["process"] = None
         APP_STATE["output"] = ""
         APP_STATE["transcription_output"] = ""
