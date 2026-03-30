@@ -254,10 +254,13 @@ def _build_lookup_matches(section_name: str, text: str, query_pattern: re.Patter
 
     snippets: list[str] = []
     for match_index, match in enumerate(query_pattern.finditer(text), start=1):
+        # Show a little text before and after each match so the result is useful
+        # even when we are not displaying the full transcript line-by-line.
         start = max(0, match.start() - LOOKUP_CONTEXT_CHARS)
         end = min(len(text), match.end() + LOOKUP_CONTEXT_CHARS)
         snippet = text[start:end].replace("\n", " ").strip()
         snippets.append(f"{section_name}: ...{snippet}...")
+        # Limit the number of snippets so a common word does not flood the results box.
         if match_index >= MAX_LOOKUP_MATCHES_PER_SECTION:
             break
     return snippets
@@ -270,10 +273,15 @@ def lookup_text(query: str | None) -> str:
         return "Enter a search term."
 
     with APP_STATE["lock"]:
+        # Search whatever text is currently loaded in the UI state.
+        # If we have a cleaned transcript, use it. Otherwise fall back to the final output.
         transcript = APP_STATE["transcription_output"] or APP_STATE["output"] or ""
         summary = APP_STATE["summary_output"] or ""
 
+    # re.escape makes the query safe to search literally, so characters like "." or "?"
+    # are treated as normal text instead of regex operators.
     query_pattern = re.compile(re.escape(query), re.IGNORECASE)
+    # Search transcript and summary separately so each result can say where it came from.
     matches = _build_lookup_matches("Transcript", transcript, query_pattern)
     matches.extend(_build_lookup_matches("Summary", summary, query_pattern))
 
@@ -358,6 +366,7 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
         outputs=[lookup_results],
     )
 
+    # Let the user press Enter in the search box instead of having to click the button.
     lookup_input.submit(
         fn=lookup_text,
         inputs=[lookup_input],
