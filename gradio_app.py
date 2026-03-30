@@ -304,47 +304,44 @@ def clear_all() -> tuple[None, str, str, None, str, str]:
         _reset_session_outputs()
     return None, READY_TEXT, "", None, "", ""
 
-CSS = """
-.gradio-container {
-  background: linear-gradient(120deg, #f5f7f8 0%, #e9f0f2 45%, #f8f3e9 100%);
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-}
-#app-title {
-  letter-spacing: 0.01em;
-  font-weight: 700;
-}
-.panel {
-  border: 1px solid #c8d2d6;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
-}
-"""
+CSS = ""
 
 
 with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
-    gr.Markdown("## AI Audio Transcriber Demo", elem_id="app-title")
-    gr.Markdown("Upload an audio file to run the transcription pipeline.")
-
-    # Lookup searches the transcript and summary currently shown in the app.
-    with gr.Row():
-        lookup_input = gr.Textbox(label="Lookup", placeholder="Search the current transcript or summary")
-        lookup_button = gr.Button("Lookup")
+    gr.Markdown("## AI Audio Transcriber Demo")
+    gr.Markdown("Upload audio, run the transcription pipeline, then search the transcript and summary.")
 
     with gr.Row():
-        with gr.Column(elem_classes=["panel"]):
-            audio_input = gr.Audio(
-                label="File Upload",
-                sources=["upload"],
-                type="filepath",
-            )
-            transcribe_button = gr.Button("Transcribe", variant="primary")
-            clear_button = gr.Button("Clear")
+        with gr.Column(scale=1, min_width=320):
+            with gr.Group():
+                gr.Markdown("### Run A File")
+                gr.Markdown("Upload audio, start a run, or clear the current session.")
+                audio_input = gr.Audio(
+                    label="File Upload",
+                    sources=["upload"],
+                    type="filepath",
+                )
+                with gr.Row():
+                    transcribe_button = gr.Button("Transcribe", variant="primary")
+                    clear_button = gr.Button("Clear")
 
-        with gr.Column(elem_classes=["panel"]):
-            transcription_display = gr.Textbox(label="Transcription", lines=14)
-            summary_display = gr.Textbox(label="Summary", lines=10)
-            pdf_download = gr.File(label="PDF Download", interactive=False)
-            lookup_results = gr.Textbox(label="Lookup Results", lines=8, interactive=False)
+            with gr.Group():
+                gr.Markdown("### Lookup")
+                gr.Markdown("Search the current transcript and summary.")
+                lookup_input = gr.Textbox(label="Search", placeholder="Enter a word or phrase")
+                lookup_button = gr.Button("Lookup")
+                lookup_results = gr.Textbox(label="Lookup Results", lines=8, interactive=False)
+
+        with gr.Column(scale=2, min_width=420):
+            gr.Markdown("### Results")
+            gr.Markdown("The transcript appears first. Summary and PDF follow when ready.")
+            with gr.Tabs():
+                with gr.Tab("Transcript"):
+                    transcription_display = gr.Textbox(label="Transcription", lines=18)
+                with gr.Tab("Summary"):
+                    summary_display = gr.Textbox(label="Summary", lines=14)
+                with gr.Tab("Exports"):
+                    pdf_download = gr.File(label="PDF Download", interactive=False)
 
     poll_timer = gr.Timer(0.5)
 
