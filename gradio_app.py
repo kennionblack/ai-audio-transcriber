@@ -122,9 +122,9 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
             APP_STATE["summary_output"] = summary
         return
 
-    if event_type == "artifacts_ready":
-        artifacts = payload.get("artifacts") or {}
-        pdf_path = artifacts.get("pdf")
+    if event_type == "export_files_ready":
+        export_files = payload.get("export_files") or {}
+        pdf_path = export_files.get("pdf")
         with APP_STATE["lock"]:
             APP_STATE["pdf_output"] = pdf_path if pdf_path else None
         return
