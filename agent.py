@@ -57,6 +57,27 @@ def _format_final_package(message: str) -> str | None:
     summary_lines = "\n".join(f"- {item}" for item in summary)
     return f"{transcription.strip()}\n\nSummary\n{summary_lines}".strip()
 
+
+def _build_final_payload(result: str) -> dict[str, object]:
+    """Build a structured final payload for the UI from shared context when possible."""
+    transcription = (ctx.cleaned_transcript or "").strip()
+    summary = [item.strip() for item in ctx.summary if isinstance(item, str) and item.strip()]
+
+    if transcription or summary:
+        summary_text = "\n".join(f"- {item}" for item in summary)
+        content_parts = [part for part in [transcription, f"Summary\n{summary_text}".strip() if summary_text else ""] if part]
+        return {
+            "content": "\n\n".join(content_parts).strip(),
+            "transcription": transcription,
+            "summary": summary_text,
+        }
+
+    return {
+        "content": result,
+        "transcription": "",
+        "summary": "",
+    }
+
 async def get_transcript() -> str:
     """Retrieve the raw transcript. Blocks until transcription is complete, then stores it in the shared context."""
     transcript = await tool_box.get_transcript()
@@ -69,6 +90,12 @@ tools.register_all_tools(tool_box)
 def add_agent_tools(agents: dict[str, Agent], tool_box: ToolBox):
     def make_agent_tool(agent: Agent):
         async def function(message: str) -> str:
+            if agent["name"] == "cleaner" and ctx.raw_transcript is None:
+                # The cleaner depends on shared transcript state. Populate it
+                # from the background transcription task if the coordinator
+                # skipped get_transcript().
+                transcript = await tool_box.get_transcript()
+                ctx.set_raw_transcript(transcript)
             # If another agent sends the coordinator a finished package,
             # stop here and return the final text right away.
             if agent["name"] == "coordinator":
@@ -179,7 +206,7 @@ async def async_main(audio_path: Path, translate_lang: str | None = None):
     add_agent_tools(agents, tool_box)
     main_agent = config["main"]
     result = await run_agent(agents[main_agent], tool_box, None)
-    emit_event("final_result", content=result)
+    emit_event("final_result", **_build_final_payload(result))
 
     if translation_task:
         await translation_task
