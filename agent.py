@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 import os
 
 from tools.transcription import load_audio_file
+from tools.translation import SUPPORTED_LANGUAGES, parse_language, run_translation
+from tools.context import OUTPUT_DIR
 
 load_dotenv()
 
@@ -175,7 +177,7 @@ def _run_transcription(audio_path: str) -> str:
     print_verbose("---- TRANSCRIPTION COMPLETE ----\n")
     return transcript
 
-async def async_main(audio_path: Path):
+async def async_main(audio_path: Path, translate_lang: str | None = None):
     tool_box.set_audio_path(str(audio_path))
     ctx.audio_filename = audio_path.name
 
@@ -186,6 +188,19 @@ async def async_main(audio_path: Path):
     )
     tool_box.set_transcription_task(transcription_task)
 
+    # If we have a translation language specified, set callback for translation 
+    # Callback invoked in the _on_complete hook in context.py after transcript and summary exist
+    translation_task = None
+    if translate_lang:
+        def _start_translation(stem: str):
+            nonlocal translation_task
+            translation_task = asyncio.ensure_future(run_translation(
+                language=translate_lang,
+                output_dir=OUTPUT_DIR,
+                stem=stem,
+            ))
+        ctx.on_translation_ready = _start_translation
+
     config = load_config(Path("agents.yaml"))
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
@@ -193,10 +208,13 @@ async def async_main(audio_path: Path):
     result = await run_agent(agents[main_agent], tool_box, None)
     emit_event("final_result", **_build_final_payload(result))
 
-def main(audio_path: Path):
+    if translation_task:
+        await translation_task
+
+def main(audio_path: Path, translate_lang: str | None = None):
     if not validate_audio_path(audio_path):
         sys.exit(1)
-    asyncio.run(async_main(audio_path))
+    asyncio.run(async_main(audio_path, translate_lang))
 
 
 if __name__ == "__main__":
@@ -206,8 +224,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the agent pipeline on an audio file.")
     parser.add_argument("audio_file_path", type=Path, help="Path to the audio file to process")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
+    parser.add_argument(
+        "--translate", "-t",
+        metavar="lang_code",
+        help=(
+            "Target language code for translation. "
+            f"Supported: {', '.join(SUPPORTED_LANGUAGES)}"
+        ),
+    )
     args = parser.parse_args()
 
     VERBOSE = args.verbose
     tools.VERBOSE = args.verbose
-    main(args.audio_file_path)
+
+    translate_lang = parse_language(args.translate) if args.translate else None
+    main(args.audio_file_path, translate_lang)
