@@ -1,6 +1,7 @@
 """Gradio frontend for running `agent.py` and showing streamed results."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -214,14 +215,19 @@ def transcribe(audio_path: str | None) -> tuple[str, str, str | None]:
             return "A transcription is already running.", "", None
 
     command = [sys.executable, "agent.py", "-v", audio_path]
+    # Run agent.py in the background.
+    # We read stdout for events.
+    env = os.environ.copy()
+    env["AGENT_MODE"] = "auto"
+
     process = subprocess.Popen(
         command,
         cwd=Path(__file__).parent,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        stdin=subprocess.PIPE,
         text=True,
         bufsize=1,
+        env=env,
     )
 
     with APP_STATE["lock"]:
@@ -299,7 +305,6 @@ def clear_all() -> tuple[None, str, str, None, str, str]:
             active_process.terminate()
         APP_STATE["process"] = None
         APP_STATE["status"] = IDLE_STATUS
-        APP_STATE["reply_count"] = 0
         APP_STATE["log_path"] = None
         _reset_session_outputs()
     return None, READY_TEXT, "", None, "", ""
