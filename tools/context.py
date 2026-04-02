@@ -115,6 +115,10 @@ class TranscriptContext:
             )
             for format_name, out_path in artifact_paths.items():
                 print_verbose(f"[context] {format_name} output written to {out_path}")
+            emit_event(
+                "export_files_ready",
+                export_files={format_name: str(out_path) for format_name, out_path in artifact_paths.items()},
+            )
         except Exception as exc:
             print_verbose(f"[context] output write failed: {exc}")
             print(f"[context] output write failed: {exc}")
