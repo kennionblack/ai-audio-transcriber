@@ -49,11 +49,11 @@ def write_outputs(
     docx_path = output_dir / f"{stem}.docx"
     pdf_path = output_dir / f"{stem}.pdf"
     content = _build_export_content(
-        audio_filename,
-        cleaned_transcript,
-        raw_transcript,
-        summary,
-        metadata,
+        audio_filename=audio_filename,
+        cleaned_transcript=cleaned_transcript,
+        raw_transcript=raw_transcript,
+        summary=summary,
+        metadata=metadata,
     )
     json_path.write_text(json.dumps(content, indent=2, ensure_ascii=False), encoding="utf-8")
     _write_docx(docx_path, content)
