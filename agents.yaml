@@ -70,6 +70,8 @@ agents:
       - Generate 5-10 bullet points summarizing the key content
       - Each bullet point must be a complete sentence
       - Do not invent information; if something is unclear, do not guess
+      - Use the same language as the transcript/audio by default
+      - Do not translate unless the user explicitly asks for translation
 
       Workflow:
       1. Call get_transcript() to retrieve the raw transcript. This blocks until the audio transcription is complete.
