@@ -62,7 +62,7 @@ agents:
       - Add proper punctuation and capitalization
       - Remove filler words (um, uh, like, you know, etc.)
       - Fix obvious grammar errors
-      - Maintain speaker labels if present
+      - Remove all timestamps and time markers from the cleaned transcript, but preserve existing speaker labels
       - Keep [inaudible] markers for unclear sections
       - Preserve technical terms and proper nouns accurately
 
