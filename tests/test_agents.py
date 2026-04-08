@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -34,6 +35,24 @@ def cleaner_agent(agents):
 @pytest.fixture
 def coordinator_agent(agents):
     return agents["coordinator"]
+
+async def run_and_get_called_tools(
+    agent,
+    tool_box,
+    *,
+    wraps=tool_box,
+    return_value=None,
+):
+    with patch.object(
+        tool_box,
+        "run_tool",
+        new_callable=AsyncMock,
+        wraps=wraps,
+        return_value=return_value,
+    ) as mock_run:
+        await run_agent(agent, tool_box, None)
+
+    return [call.args[0] for call in mock_run.call_args_list]
 
 
 def test_deterministic_output_for_audio_file():
@@ -96,20 +115,18 @@ async def test_cleaner_calls_tools_in_order(mock_openai, cleaner_agent):
     mock_openai.responses.create.side_effect = [
         make_tool_call_response("get_transcript", {}),
         make_tool_call_response("set_cleaned_transcript", {"text": "Clean text."}),
-        make_tool_call_response("set_summary", {"bullets_json": '["Point one."]'}),
+        make_tool_call_response("set_summary", {"bullets_json": '["Point one."]', "n_bullets": "3"}),
         make_text_response("- Point one."),
     ]
 
     # Patch tools to record calls
-    with patch.object(tool_box, "run_tool", wraps=tool_box.run_tool, new_callable=AsyncMock) as mock_run:
-        await run_agent(cleaner_agent, tool_box, "Summarize. n_bullets=3")
-        tool_names = [call.args[0] for call in mock_run.call_args_list]
+    called_tools = await run_and_get_called_tools(cleaner_agent, tool_box)
 
-    assert tool_names[0] == "get_transcript"
-    assert "set_cleaned_transcript" in tool_names
-    assert "set_summary" in tool_names
+    assert called_tools[0] == "get_transcript"
+    assert "set_cleaned_transcript" in called_tools
+    assert "set_summary" in called_tools
     # Order matters: can't summarize before transcribing
-    assert tool_names.index("get_transcript") < tool_names.index("set_summary")
+    assert called_tools.index("get_transcript") < called_tools.index("set_summary")
 
 
 async def test_coordinator_delegates_to_cleaner(mock_openai, coordinator_agent):
@@ -119,9 +136,7 @@ async def test_coordinator_delegates_to_cleaner(mock_openai, coordinator_agent):
         make_text_response("- Point one."),
     ]
 
-    with patch.object(tool_box, "run_tool", return_value="- Point one.", new_callable=AsyncMock) as mock_run:
-        await run_agent(coordinator_agent, tool_box, None)
-        called_tools = [c.args[0] for c in mock_run.call_args_list]
+    called_tools = await run_and_get_called_tools(coordinator_agent, tool_box)
 
     assert "cleaner" in called_tools
     # Coordinator must NOT call get_transcript directly
