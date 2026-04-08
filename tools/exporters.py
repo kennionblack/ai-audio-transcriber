@@ -42,6 +42,7 @@ def write_outputs(
     metadata: dict[str, Any],
     audio_filename: str | None = None,
     raw_transcript: str | None = None,
+    title: str = "Audio Transcription Output",
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -54,6 +55,7 @@ def write_outputs(
         raw_transcript,
         summary,
         metadata,
+        title,
     )
     json_path.write_text(json.dumps(content, indent=2, ensure_ascii=False), encoding="utf-8")
     _write_docx(docx_path, content)
@@ -73,11 +75,12 @@ def _build_export_content(
     raw_transcript: str | None,
     summary: list[str],
     metadata: dict[str, Any],
+    title: str = "Audio Transcription Output",
 ) -> dict[str, Any]:
     transcript = (cleaned_transcript or raw_transcript or "").strip() or "[Transcript unavailable]"
     generated_at = datetime.now().astimezone().strftime("%m-%d-%Y %H:%M:%S %Z")
     return {
-        "title": "Audio Transcription Output",
+        "title": title,
         "generated_at": generated_at,
         "audio_filename": audio_filename,
         "metadata": dict(metadata),
