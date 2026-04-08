@@ -52,7 +52,7 @@ def test_deterministic_output_for_audio_file():
 
     result = result.lower()
 
-    expected = "hello, my name is arya, i am a high quality speech voice, that you can use for your screen reading needs with iarrator which is the screen reader app built into windows. you can use my voice while interacting, and reading text with narrator, and i hope you give me a try."
+    expected = "hello, my name is arya, i am a high quality speech voice, that you can use for your screen reading needs with narrator which is the screen reader app built into windows. you can use my voice while interacting, and reading text with narrator, and i hope you give me a try."
     
     assert SequenceMatcher(None, result, expected).ratio() >= 0.9
 
