@@ -118,7 +118,7 @@ class ToolBox:
                     return await func(*args, **kwargs)
                 except (KeyboardInterrupt, SystemExit):
                     raise
-                except:
+                except Exception:
                     return traceback.format_exc()
 
         else:
@@ -127,7 +127,7 @@ class ToolBox:
                     return func(*args, **kwargs)
                 except (KeyboardInterrupt, SystemExit):
                     raise
-                except:
+                except Exception:
                     return traceback.format_exc()
 
         self._funcs[func.__name__] = safe_func

@@ -96,14 +96,14 @@ class ToolBox:
             async def safe_func(*args, **kwargs):
                 try:
                     return await func(*args, **kwargs)
-                except:
+                except Exception:
                     return traceback.format_exc()
 
         else:
             def safe_func(*args, **kwargs):
                 try:
                     return func(*args, **kwargs)
-                except:
+                except Exception:
                     return traceback.format_exc()
 
         self._funcs[func.__name__] = safe_func

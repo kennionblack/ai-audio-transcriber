@@ -62,7 +62,8 @@ def _build_final_payload(result: str) -> dict[str, object]:
 
     if transcription or summary:
         summary_text = "\n".join(f"- {item}" for item in summary)
-        content_parts = [part for part in [transcription, f"Summary\n{summary_text}".strip() if summary_text else ""] if part]
+        summary_block = f"Summary\n{summary_text}".strip() if summary_text else ""
+        content_parts = [part for part in [transcription, summary_block] if part]
         return {
             "content": "\n\n".join(content_parts).strip(),
             "transcription": transcription,

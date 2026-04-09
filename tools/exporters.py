@@ -9,14 +9,17 @@ from typing import Any
 from docx import Document
 from fpdf import FPDF
 
-# PDF layout constants. Units are in points (1/72 inch). These can be adjusted as needed for different formatting preferences.
+# PDF layout constants. Units are in points (1/72 inch). These can be adjusted as needed
+# for different formatting preferences.
 PDF_MARGIN = 72
 PDF_TEXT_SIZE = 11
 PDF_TITLE_SIZE = 16
 PDF_SECTION_SIZE = 13
 PDF_LINE_HEIGHT = 15
 
-# Text replacements for handling Unicode punctuation in PDF generation. This mapping replaces common Unicode punctuation characters with their ASCII equivalents to ensure better compatibility and appearance in the generated PDF files.
+# Text replacements for handling Unicode punctuation in PDF generation. This mapping replaces
+# common Unicode punctuation characters with their ASCII equivalents to ensure better
+# compatibility and appearance in the generated PDF files.
 PDF_TEXT_REPLACEMENTS = str.maketrans(
     {
         "\u2018": "'",
@@ -32,7 +35,9 @@ PDF_TEXT_REPLACEMENTS = str.maketrans(
 )
 
 
-# This function takes the cleaned transcript, summary, and metadata, and writes them to JSON, DOCX, and PDF files in the specified output directory. It returns a dictionary with the paths to each of the generated files.
+# This function takes the cleaned transcript, summary, and metadata, and writes them to JSON,
+# DOCX, and PDF files in the specified output directory. It returns a dictionary with the paths
+# to each of the generated files.
 def write_outputs(
     *,
     output_dir: Path,
@@ -68,7 +73,10 @@ def write_outputs(
     }
 
 
-# This helper function constructs a structured content dictionary that includes the audio filename, cleaned transcript (or raw transcript if cleaned is unavailable), summary, and metadata. This structured content is then used by the DOCX and PDF writing functions to generate the respective files with consistent formatting and information.
+# This helper function constructs a structured content dictionary that includes the audio
+# filename, cleaned transcript (or raw transcript if cleaned is unavailable), summary, and
+# metadata. This structured content is then used by the DOCX and PDF writing functions to
+# generate the respective files with consistent formatting and information.
 def _build_export_content(
     audio_filename: str | None,
     cleaned_transcript: str | None,
@@ -89,7 +97,12 @@ def _build_export_content(
     }
 
 
-# The following two functions, _write_docx and _write_pdf, are responsible for generating the DOCX and PDF files respectively. They take the structured content dictionary and format it appropriately for each file type, including headings, paragraphs, and metadata sections. The DOCX file is created using the python-docx library, while the PDF file is created using the FPDF library with specific layout settings for margins, font sizes, and line heights to ensure a clean and readable output.
+# The following two functions, _write_docx and _write_pdf, are responsible for generating the
+# DOCX and PDF files respectively. They take the structured content dictionary and format it
+# appropriately for each file type, including headings, paragraphs, and metadata sections. The
+# DOCX file is created using the python-docx library, while the PDF file is created using the
+# FPDF library with specific layout settings for margins, font sizes, and line heights to ensure
+# a clean and readable output.
 def _write_docx(path: Path, content: dict[str, Any]) -> None:
     document = Document()
     document.add_heading(content["title"], level=1)
@@ -120,7 +133,11 @@ def _write_docx(path: Path, content: dict[str, Any]) -> None:
     document.save(str(path))
 
 
-# The _write_pdf function creates a PDF file with a structured layout that includes the title, metadata, summary, and transcript. It uses the FPDF library to set up the document with specific margins and font sizes, and it formats the content with headings and line spacing for readability. The function handles cases where certain pieces of information may be unavailable, ensuring that the PDF still provides a clear and organized presentation of the available data.
+# The _write_pdf function creates a PDF file with a structured layout that includes the title,
+# metadata, summary, and transcript. It uses the FPDF library to set up the document with
+# specific margins and font sizes, and it formats the content with headings and line spacing for
+# readability. The function handles cases where certain pieces of information may be unavailable,
+# ensuring that the PDF still provides a clear and organized presentation of the available data.
 def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     pdf = FPDF(format="letter", unit="pt")
     pdf.set_title(content["title"])
@@ -159,7 +176,11 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     pdf.output(str(path))
 
 
-# The following two helper functions, _pdf_heading and _pdf_line, are used to format the headings and lines of text in the PDF document. The _pdf_heading function sets the font to bold and adjusts the size for section headings, while the _pdf_line function sets the font for regular text lines. Both functions handle line spacing and ensure that the text is properly aligned within the PDF layout.
+# The following two helper functions, _pdf_heading and _pdf_line, are used to format the headings
+# and lines of text in the PDF document. The _pdf_heading function sets the font to bold and
+# adjusts the size for section headings, while the _pdf_line function sets the font for regular
+# text lines. Both functions handle line spacing and ensure that the text is properly aligned
+# within the PDF layout.
 def _pdf_heading(pdf: FPDF, text: str, size: int) -> None:
     pdf.ln(PDF_LINE_HEIGHT / 2)
     pdf.set_font("Helvetica", style="B", size=size)
@@ -167,13 +188,16 @@ def _pdf_heading(pdf: FPDF, text: str, size: int) -> None:
     pdf.multi_cell(w=pdf.epw, h=PDF_LINE_HEIGHT, text=_pdf_safe_text(text))
 
 
-# The _pdf_line function is responsible for writing a line of text to the PDF document. It sets the font to a regular style and the specified text size, then uses the multi_cell method to write the text with proper line spacing and alignment within the PDF's margins.
+# The _pdf_line function is responsible for writing a line of text to the PDF document. It sets
+# the font to a regular style and the specified text size, then uses the multi_cell method to
+# write the text with proper line spacing and alignment within the PDF's margins.
 def _pdf_line(pdf: FPDF, text: str) -> None:
     pdf.set_font("Helvetica", size=PDF_TEXT_SIZE)
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(w=pdf.epw, h=PDF_LINE_HEIGHT, text=_pdf_safe_text(text))
 
-# This function takes a string of text and applies Unicode normalization and character replacements to ensure that the text is compatible with the PDF generation process.
+# This function takes a string of text and applies Unicode normalization and character
+# replacements to ensure that the text is compatible with the PDF generation process.
 def _pdf_safe_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text).translate(PDF_TEXT_REPLACEMENTS)
     return normalized.encode("latin-1", errors="replace").decode("latin-1")
