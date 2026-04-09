@@ -1,16 +1,13 @@
-from contextlib import contextmanager
 import json
+from difflib import SequenceMatcher
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agent import _format_final_package, run_agent
-
+from agent import _format_final_package, run_agent, tool_box
 from config import load_config
-from agent import tool_box
 from tools.transcription import load_audio_file
-from difflib import SequenceMatcher
 
 base_dir = Path(__file__).resolve().parents[1]
 
@@ -72,7 +69,7 @@ def test_deterministic_output_for_audio_file():
     result = result.lower()
 
     expected = "hello, my name is arya, i am a high quality speech voice, that you can use for your screen reading needs with narrator which is the screen reader app built into windows. you can use my voice while interacting, and reading text with narrator, and i hope you give me a try."
-    
+
     assert SequenceMatcher(None, result, expected, autojunk=False).ratio() >= 0.9
 
 

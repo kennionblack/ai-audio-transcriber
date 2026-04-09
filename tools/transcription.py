@@ -1,7 +1,8 @@
 import os
+
 from faster_whisper import WhisperModel
 
-MODEL_NAME = "medium" 
+MODEL_NAME = "medium"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 
@@ -12,15 +13,15 @@ def load_audio_file(file_path: str) -> str:
         return f"Error: File not found at {file_path}"
 
     try:
-        
+
         segments, info = model.transcribe(file_path, beam_size=5)
-        
+
         full_transcript = []
-        
+
         for segment in segments:
             text = segment.text.strip()
             full_transcript.append(text)
-            
+
 
         return " ".join(full_transcript)
 

@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+
 from tools.context import get_context
 
 
@@ -37,13 +38,13 @@ def set_summary(bullets_json: str, n_bullets: Optional[int]) -> str:
 
     if not isinstance(bullets, list):
         return "[validation_error] expected a JSON array of strings"
-    
+
     min = get_context().min_bullets
     max = get_context().max_bullets
-    
+
     if len(bullets) < min or len(bullets) > max:
         return f"[validation_error] number of bullet points is outside acceptable range of {min}-{max}"
-    
+
     if n_bullets and len(bullets) != n_bullets:
         return "[validation_error] invalid number of bullet points"
 

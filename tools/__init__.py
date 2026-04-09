@@ -17,11 +17,11 @@ def print_verbose(*args, **kwargs):
 def register_all_tools(tool_box):
     tools_dir = Path(__file__).parent
     tool_modules = tools_dir.glob("*_tools.py")
-    
+
     for module_path in tool_modules:
         module_name = module_path.stem
         module = importlib.import_module(f"tools.{module_name}")
-        
+
         for name, obj in inspect.getmembers(module, inspect.isfunction):
             # Skip private functions and imported functions
             if not name.startswith('_') and obj.__module__ == module.__name__:

@@ -1,7 +1,7 @@
 import inspect
 import traceback
 from types import UnionType
-from typing import Any, Callable, get_type_hints, Literal, get_origin, get_args, Union
+from typing import Any, Callable, Literal, Union, get_args, get_origin, get_type_hints
 
 from openai.types.responses import FunctionToolParam
 

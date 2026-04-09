@@ -1,15 +1,14 @@
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
 from config import Agent, load_config
 from tools import ToolBox
-
-from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
