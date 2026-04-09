@@ -4,9 +4,14 @@
   "service": "app",
   "workspaceFolder": "/workspace",
   "remoteUser": "vscode",
+  "postCreateCommand": "pre-commit install --hook-type pre-push",
   "customizations": {
     "vscode": {
-      "extensions": ["ms-python.python", "ms-python.vscode-pylance"]
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff"
+      ]
     }
   }
 }
