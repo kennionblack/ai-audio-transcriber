@@ -79,6 +79,11 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
         if APP_STATE["process"] is not process:
             return
 
+    if event_type == "partial_transcript":
+        with APP_STATE["lock"]:
+            APP_STATE["transcription_output"] = str(payload.get("text", "")).strip()
+        return
+
     if event_type == "transcript_ready":
         with APP_STATE["lock"]:
             APP_STATE["transcription_output"] = str(payload.get("transcript", "")).strip()
