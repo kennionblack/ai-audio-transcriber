@@ -177,7 +177,7 @@ def _run_transcription(audio_path: str) -> str:
     print_verbose("---- TRANSCRIPTION COMPLETE ----\n")
     return transcript
 
-async def async_main(audio_path: Path, translate_lang: str | None = None):
+async def async_main(audio_path: Path, translate_lang: str | None = None, mode: str = "interactive"):
     tool_box.set_audio_path(str(audio_path))
     ctx.audio_filename = audio_path.name
 
@@ -204,17 +204,20 @@ async def async_main(audio_path: Path, translate_lang: str | None = None):
     config = load_config(Path("agents.yaml"))
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
-    main_agent = config["main"]
+    if mode == "auto":
+        main_agent=config.get("automated", config["main"])
+    else:
+        main_agent=config["main"]
     result = await run_agent(agents[main_agent], tool_box, None)
     emit_event("final_result", **_build_final_payload(result))
 
     if translation_task:
         await translation_task
 
-def main(audio_path: Path, translate_lang: str | None = None):
+def main(audio_path: Path, translate_lang: str | None = None, mode: str = "interactive"):
     if not validate_audio_path(audio_path):
         sys.exit(1)
-    asyncio.run(async_main(audio_path, translate_lang))
+    asyncio.run(async_main(audio_path, translate_lang, mode))
 
 
 if __name__ == "__main__":
@@ -232,10 +235,16 @@ if __name__ == "__main__":
             f"Supported: {', '.join(SUPPORTED_LANGUAGES)}"
         ),
     )
+    parser.add_argument(
+        "--mode", "-m",
+        choices=["interactive", "auto"],
+        default="interactive",
+        help="Agent execution mode (default: interactive)",
+    )
     args = parser.parse_args()
 
     VERBOSE = args.verbose
     tools.VERBOSE = args.verbose
 
     translate_lang = parse_language(args.translate) if args.translate else None
-    main(args.audio_file_path, translate_lang)
+    main(args.audio_file_path, translate_lang, args.mode)

@@ -1,6 +1,7 @@
 """Gradio frontend for running `agent.py` and showing streamed results."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -22,12 +23,6 @@ TRANSCRIPTION_RUNNING_TEXT = "Transcription running..."
 NO_OUTPUT_TEXT = "[No output returned]"
 MAX_LOOKUP_MATCHES_PER_SECTION = 5
 LOOKUP_CONTEXT_CHARS = 40
-DEFAULT_AUTO_REPLY = (
-    "You have the correct audio file. Please transcribe it and return the full "
-    "cleaned transcription plus a summary of key points, action items, and decisions. "
-    "Use reasonable defaults and do not wait for further clarification."
-)
-FINAL_AUTO_REPLY = "No, that's all. Please end the conversation and return the final result."
 LOG_DIR = Path(__file__).parent / "logs"
 
 # Shared state for the current Gradio session.
@@ -38,7 +33,6 @@ APP_STATE = {
     "transcription_output": "",
     "summary_output": "",
     "pdf_output": None,
-    "reply_count": 0,
     # Log file for the current run.
     "log_path": None,
     # The UI and the background reader both use this state, so the lock keeps
@@ -59,7 +53,6 @@ def _set_running_session(process: subprocess.Popen) -> None:
     """Store the active process and initialize state for a new transcription run."""
     APP_STATE["process"] = process
     APP_STATE["status"] = RUNNING_STATUS
-    APP_STATE["reply_count"] = 0
     APP_STATE["log_path"] = LOG_DIR / f"transcription-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
     _reset_session_outputs()
 
@@ -77,32 +70,9 @@ def _snapshot_results() -> tuple[str, str, str | None, str]:
         )
 
 
-def _send_default_reply(process: subprocess.Popen) -> None:
-    """Send the next automatic reply to a running agent process."""
-    with APP_STATE["lock"]:
-        # We only auto-reply twice:
-        # 1) start the work
-        # 2) tell the coordinator we are done
-        if APP_STATE["reply_count"] >= 2 or process.poll() is not None or process.stdin is None:
-            return
-
-        try:
-            reply = DEFAULT_AUTO_REPLY if APP_STATE["reply_count"] == 0 else FINAL_AUTO_REPLY
-            process.stdin.write(reply + "\n")
-            process.stdin.flush()
-            APP_STATE["reply_count"] += 1
-        except Exception as exc:
-            APP_STATE["output"] = f"Auto reply failed: {exc}"
-
-
 def _handle_event(process: subprocess.Popen, payload: dict) -> None:
     """Apply a backend event to the shared app state."""
     event_type = payload.get("type")
-
-    if event_type == "user_message":
-        # The backend asked for input, so send the next automatic reply.
-        _send_default_reply(process)
-        return
 
     with APP_STATE["lock"]:
         # Ignore events from an older run.
@@ -213,13 +183,15 @@ def transcribe(audio_path: str | None) -> tuple[str, str, str | None]:
         if existing is not None and existing.poll() is None:
             return "A transcription is already running.", "", None
 
-    command = [sys.executable, "agent.py", "-v", audio_path]
+    command = [sys.executable, "agent.py", "-v", "--mode", "auto", audio_path]
+    # Run agent.py in the background.
+    # We read stdout for events.
+
     process = subprocess.Popen(
         command,
         cwd=Path(__file__).parent,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        stdin=subprocess.PIPE,
         text=True,
         bufsize=1,
     )
@@ -299,7 +271,6 @@ def clear_all() -> tuple[None, str, str, None, str, str]:
             active_process.terminate()
         APP_STATE["process"] = None
         APP_STATE["status"] = IDLE_STATUS
-        APP_STATE["reply_count"] = 0
         APP_STATE["log_path"] = None
         _reset_session_outputs()
     return None, READY_TEXT, "", None, "", ""
