@@ -25,6 +25,15 @@ MAX_LOOKUP_MATCHES_PER_SECTION = 5
 LOOKUP_CONTEXT_CHARS = 40
 LOG_DIR = Path(__file__).parent / "logs"
 
+# Human-readable labels shown as the compact event status.
+_EVENT_LABELS = {
+    "partial_transcript": "Transcribing audio...",
+    "transcript_ready":   "Transcription complete. Cleaning...",
+    "summary_ready":      "Summary generated.",
+    "export_files_ready": "Export files ready.",
+    "final_result":       "Pipeline complete.",
+}
+
 # Shared state for the current Gradio session.
 APP_STATE = {
     "process": None,
@@ -33,6 +42,13 @@ APP_STATE = {
     "transcription_output": "",
     "summary_output": "",
     "pdf_output": None,
+    "docx_output": None,
+    # Compact label of the most recent event.
+    "current_event": "",
+    # Full timestamped event log for the accordion detail view.
+    "event_log": [],
+    # Track whether the first partial_transcript has been logged this run.
+    "transcription_logged": False,
     # Log file for the current run.
     "log_path": None,
     # The UI and the background reader both use this state, so the lock keeps
@@ -47,6 +63,10 @@ def _reset_session_outputs() -> None:
     APP_STATE["transcription_output"] = ""
     APP_STATE["summary_output"] = ""
     APP_STATE["pdf_output"] = None
+    APP_STATE["docx_output"] = None
+    APP_STATE["current_event"] = ""
+    APP_STATE["event_log"] = []
+    APP_STATE["transcription_logged"] = False
 
 
 def _set_running_session(process: subprocess.Popen) -> None:
@@ -57,15 +77,17 @@ def _set_running_session(process: subprocess.Popen) -> None:
     _reset_session_outputs()
 
 
-def _snapshot_results() -> tuple[str, str, str | None, str]:
+def _snapshot_results() -> tuple:
     """Read the UI-visible result state under a single lock."""
     with APP_STATE["lock"]:
-        # Read everything at once so the UI gets one consistent view of the state.
         return (
             APP_STATE["output"],
             APP_STATE["transcription_output"],
             APP_STATE["summary_output"],
             APP_STATE["pdf_output"],
+            APP_STATE["docx_output"],
+            APP_STATE["current_event"],
+            list(APP_STATE["event_log"]),
             APP_STATE["status"],
         )
 
@@ -78,6 +100,23 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
         # Ignore events from an older run.
         if APP_STATE["process"] is not process:
             return
+
+    label = _EVENT_LABELS.get(event_type, event_type)
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    with APP_STATE["lock"]:
+        APP_STATE["current_event"] = label
+        if event_type == "partial_transcript":
+            # Log only the first occurrence to avoid flooding the log.
+            if not APP_STATE["transcription_logged"]:
+                APP_STATE["event_log"].append(f"[{timestamp}] {label}")
+                APP_STATE["transcription_logged"] = True
+        else:
+            APP_STATE["event_log"].append(f"[{timestamp}] {label}")
+
+    if event_type == "partial_transcript":
+        with APP_STATE["lock"]:
+            APP_STATE["transcription_output"] = str(payload.get("text", "")).strip()
+        return
 
     if event_type == "transcript_ready":
         with APP_STATE["lock"]:
@@ -96,8 +135,10 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
     if event_type == "export_files_ready":
         export_files = payload.get("export_files") or {}
         pdf_path = export_files.get("pdf")
+        docx_path = export_files.get("docx")
         with APP_STATE["lock"]:
             APP_STATE["pdf_output"] = pdf_path if pdf_path else None
+            APP_STATE["docx_output"] = docx_path if docx_path else None
         return
 
     if event_type == "final_result":
@@ -172,20 +213,18 @@ def _validate_audio_path(audio_path: str | None) -> str | None:
     return None
 
 
-def transcribe(audio_path: str | None) -> tuple[str, str, str | None]:
+def transcribe(audio_path: str | None) -> tuple:
     """Start agent.py in the background."""
     error = _validate_audio_path(audio_path)
     if error:
-        return error, "", None
+        return error, "", None, None, "Idle", ""
 
     with APP_STATE["lock"]:
         existing = APP_STATE["process"]
         if existing is not None and existing.poll() is None:
-            return "A transcription is already running.", "", None
+            return "A transcription is already running.", "", None, None, "Idle", ""
 
     command = [sys.executable, "agent.py", "-v", "--mode", "auto", audio_path]
-    # Run agent.py in the background.
-    # We read stdout for events.
 
     process = subprocess.Popen(
         command,
@@ -197,26 +236,38 @@ def transcribe(audio_path: str | None) -> tuple[str, str, str | None]:
     )
 
     with APP_STATE["lock"]:
-        # Start a fresh session for this new run.
         _set_running_session(process)
 
-    # Keep reading backend output without blocking the page.
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
-    return TRANSCRIPTION_STARTED_TEXT, "", None
+    return TRANSCRIPTION_STARTED_TEXT, "", None, None, "Starting...", ""
 
 
-def refresh_outputs() -> tuple[str, str, str | None]:
-    """Read current state and build the main output text."""
-    # Take one snapshot of the current results, then build the UI response from it.
-    output, transcription_text, summary_text, pdf_path, status = _snapshot_results()
+def refresh_all() -> tuple:
+    """Single poll callback — returns all UI state at once."""
+    output, transcription_text, summary_text, pdf_path, docx_path, current_event, event_log, status = _snapshot_results()
 
     if status.startswith("Completed"):
-        return transcription_text or output or NO_OUTPUT_TEXT, summary_text, pdf_path
-    if status.startswith("Failed"):
-        return f"Transcription failed.\n\n{output or NO_OUTPUT_TEXT}", "", None
-    if status == RUNNING_STATUS:
-        return transcription_text or TRANSCRIPTION_RUNNING_TEXT, summary_text, None
-    return READY_TEXT, "", None
+        transcript_val = transcription_text or output or NO_OUTPUT_TEXT
+        summary_val = summary_text
+        pdf_val = pdf_path
+        docx_val = docx_path
+    elif status.startswith("Failed"):
+        transcript_val = f"Transcription failed.\n\n{output or NO_OUTPUT_TEXT}"
+        summary_val = ""
+        pdf_val = None
+        docx_val = None
+    elif status == RUNNING_STATUS:
+        transcript_val = transcription_text or TRANSCRIPTION_RUNNING_TEXT
+        summary_val = summary_text
+        pdf_val = None
+        docx_val = None
+    else:
+        transcript_val = READY_TEXT
+        summary_val = ""
+        pdf_val = None
+        docx_val = None
+
+    return transcript_val, summary_val, pdf_val, docx_val, current_event or "Idle", "\n".join(event_log)
 
 
 def _build_lookup_matches(section_name: str, text: str, query_pattern: re.Pattern[str]) -> list[str]:
@@ -263,7 +314,7 @@ def lookup_text(query: str | None) -> str:
     return "\n".join(matches)
 
 
-def clear_all() -> tuple[None, str, str, None, str, str]:
+def clear_all() -> tuple:
     """Reset file input and output."""
     with APP_STATE["lock"]:
         active_process = APP_STATE["process"]
@@ -273,7 +324,7 @@ def clear_all() -> tuple[None, str, str, None, str, str]:
         APP_STATE["status"] = IDLE_STATUS
         APP_STATE["log_path"] = None
         _reset_session_outputs()
-    return None, READY_TEXT, "", None, "", ""
+    return None, READY_TEXT, "", None, None, "", "", "Idle", ""
 
 CSS = ""
 
@@ -305,7 +356,7 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
 
         with gr.Column(scale=2, min_width=420):
             gr.Markdown("### Results")
-            gr.Markdown("The transcript appears first. Summary and PDF follow when ready.")
+            gr.Markdown("The transcript appears first. Summary and exports follow when ready.")
             with gr.Tabs():
                 with gr.Tab("Transcript"):
                     transcription_display = gr.Textbox(label="Transcription", lines=18)
@@ -313,19 +364,34 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
                     summary_display = gr.Textbox(label="Summary", lines=14)
                 with gr.Tab("Exports"):
                     pdf_download = gr.File(label="PDF Download", interactive=False)
+                    docx_download = gr.File(label="Word Document Download", interactive=False)
+
+    with gr.Accordion("Pipeline Events", open=False):
+        event_status = gr.Markdown("Idle")
+        event_log_display = gr.Textbox(label="Event Log", lines=6, interactive=False)
 
     poll_timer = gr.Timer(0.5)
+
+    # Shared output list used by both the transcribe button and the poll timer.
+    _poll_outputs = [
+        transcription_display,
+        summary_display,
+        pdf_download,
+        docx_download,
+        event_status,
+        event_log_display,
+    ]
 
     transcribe_button.click(
         fn=transcribe,
         inputs=[audio_input],
-        outputs=[transcription_display, summary_display, pdf_download],
+        outputs=_poll_outputs,
     )
 
     poll_timer.tick(
-        fn=refresh_outputs,
+        fn=refresh_all,
         inputs=[],
-        outputs=[transcription_display, summary_display, pdf_download],
+        outputs=_poll_outputs,
     )
 
     lookup_button.click(
@@ -334,7 +400,6 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
         outputs=[lookup_results],
     )
 
-    # Let the user press Enter in the search box instead of having to click the button.
     lookup_input.submit(
         fn=lookup_text,
         inputs=[lookup_input],
@@ -349,8 +414,11 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
             transcription_display,
             summary_display,
             pdf_download,
+            docx_download,
             lookup_input,
             lookup_results,
+            event_status,
+            event_log_display,
         ],
     )
 

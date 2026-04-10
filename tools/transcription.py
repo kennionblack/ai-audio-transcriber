@@ -1,5 +1,6 @@
 import os
 from faster_whisper import WhisperModel
+from runtime_events import emit_event
 
 MODEL_NAME = "medium" 
 DEVICE = "cpu"
@@ -20,7 +21,8 @@ def load_audio_file(file_path: str) -> str:
         for segment in segments:
             text = segment.text.strip()
             full_transcript.append(text)
-            
+            emit_event("partial_transcript", text=" ".join(full_transcript))
+
 
         return " ".join(full_transcript)
 
