@@ -25,6 +25,15 @@ MAX_LOOKUP_MATCHES_PER_SECTION = 5
 LOOKUP_CONTEXT_CHARS = 40
 LOG_DIR = Path(__file__).parent / "logs"
 
+# Human-readable labels shown as the compact event status.
+_EVENT_LABELS = {
+    "partial_transcript": "Transcribing audio...",
+    "transcript_ready":   "Transcription complete. Cleaning...",
+    "summary_ready":      "Summary generated.",
+    "export_files_ready": "Export files ready.",
+    "final_result":       "Pipeline complete.",
+}
+
 # Shared state for the current Gradio session.
 APP_STATE = {
     "process": None,
@@ -33,6 +42,10 @@ APP_STATE = {
     "transcription_output": "",
     "summary_output": "",
     "pdf_output": None,
+    # Compact label of the most recent event.
+    "current_event": "",
+    # Full timestamped event log for the accordion detail view.
+    "event_log": [],
     # Log file for the current run.
     "log_path": None,
     # The UI and the background reader both use this state, so the lock keeps
@@ -47,6 +60,8 @@ def _reset_session_outputs() -> None:
     APP_STATE["transcription_output"] = ""
     APP_STATE["summary_output"] = ""
     APP_STATE["pdf_output"] = None
+    APP_STATE["current_event"] = ""
+    APP_STATE["event_log"] = []
 
 
 def _set_running_session(process: subprocess.Popen) -> None:
@@ -78,6 +93,14 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
         # Ignore events from an older run.
         if APP_STATE["process"] is not process:
             return
+
+    label = _EVENT_LABELS.get(event_type, event_type)
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    with APP_STATE["lock"]:
+        APP_STATE["current_event"] = label
+        # Only log distinct labels — skip noisy partial_transcript repeats.
+        if event_type != "partial_transcript":
+            APP_STATE["event_log"].append(f"[{timestamp}] {label}")
 
     if event_type == "partial_transcript":
         with APP_STATE["lock"]:
@@ -224,6 +247,14 @@ def refresh_outputs() -> tuple[str, str, str | None]:
     return READY_TEXT, "", None
 
 
+def refresh_events() -> tuple[str, str]:
+    """Return the compact event status and the full event log."""
+    with APP_STATE["lock"]:
+        current = APP_STATE["current_event"]
+        log = list(APP_STATE["event_log"])
+    return current or "Idle", "\n".join(log)
+
+
 def _build_lookup_matches(section_name: str, text: str, query_pattern: re.Pattern[str]) -> list[str]:
     """Return a small set of snippet matches from one text section."""
     if not text.strip():
@@ -268,7 +299,7 @@ def lookup_text(query: str | None) -> str:
     return "\n".join(matches)
 
 
-def clear_all() -> tuple[None, str, str, None, str, str]:
+def clear_all() -> tuple:
     """Reset file input and output."""
     with APP_STATE["lock"]:
         active_process = APP_STATE["process"]
@@ -278,7 +309,7 @@ def clear_all() -> tuple[None, str, str, None, str, str]:
         APP_STATE["status"] = IDLE_STATUS
         APP_STATE["log_path"] = None
         _reset_session_outputs()
-    return None, READY_TEXT, "", None, "", ""
+    return None, READY_TEXT, "", None, "", "", "Idle", ""
 
 CSS = ""
 
@@ -319,6 +350,10 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
                 with gr.Tab("Exports"):
                     pdf_download = gr.File(label="PDF Download", interactive=False)
 
+    with gr.Accordion("Pipeline Events", open=False):
+        event_status = gr.Markdown("Idle")
+        event_log_display = gr.Textbox(label="Event Log", lines=6, interactive=False)
+
     poll_timer = gr.Timer(0.5)
 
     transcribe_button.click(
@@ -331,6 +366,12 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
         fn=refresh_outputs,
         inputs=[],
         outputs=[transcription_display, summary_display, pdf_download],
+    )
+
+    poll_timer.tick(
+        fn=refresh_events,
+        inputs=[],
+        outputs=[event_status, event_log_display],
     )
 
     lookup_button.click(
@@ -356,6 +397,8 @@ with gr.Blocks(title="AI Audio Transcriber Demo", css=CSS) as app:
             pdf_download,
             lookup_input,
             lookup_results,
+            event_status,
+            event_log_display,
         ],
     )
 
