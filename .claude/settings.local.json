@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://api.github.com/repos/zhongshukeji/Noto-Sans-SC/contents/font/otf\")",
+      "Bash(python -c \"import json,sys; [print\\(f['name'], f.get\\('download_url',''\\)\\) for f in json.load\\(sys.stdin\\)]\")"
+    ]
+  }
+}

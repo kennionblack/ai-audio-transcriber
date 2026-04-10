@@ -17,9 +17,12 @@ PDF_LINE_HEIGHT = 15
 
 
 PDF_FONT_FAMILY = "TranscriberSans"
+PDF_FONT_FAMILY_CJK = "TranscriberSansCJK"
 _FONTS_DIR = Path(__file__).parent.parent / "assets" / "fonts"
 PDF_FONT_REGULAR = _FONTS_DIR / "font-regular.ttf"
 PDF_FONT_BOLD = _FONTS_DIR / "font-bold.ttf"
+PDF_FONT_CJK_REGULAR = _FONTS_DIR / "font-cjk-regular.ttf"
+PDF_FONT_CJK_BOLD = _FONTS_DIR / "font-cjk-bold.ttf"
 
 
 
@@ -118,8 +121,12 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     pdf.set_compression(False)
 
     if PDF_FONT_REGULAR.exists() and PDF_FONT_BOLD.exists():
-        pdf.add_font(PDF_FONT_FAMILY, style="", fname=str(PDF_FONT_REGULAR), uni=True)
-        pdf.add_font(PDF_FONT_FAMILY, style="B", fname=str(PDF_FONT_BOLD), uni=True)
+        pdf.add_font(PDF_FONT_FAMILY, style="", fname=str(PDF_FONT_REGULAR))
+        pdf.add_font(PDF_FONT_FAMILY, style="B", fname=str(PDF_FONT_BOLD))
+        if PDF_FONT_CJK_REGULAR.exists() and PDF_FONT_CJK_BOLD.exists():
+            pdf.add_font(PDF_FONT_FAMILY_CJK, style="", fname=str(PDF_FONT_CJK_REGULAR))
+            pdf.add_font(PDF_FONT_FAMILY_CJK, style="B", fname=str(PDF_FONT_CJK_BOLD))
+            pdf.set_fallback_fonts([PDF_FONT_FAMILY_CJK])
         font_family = PDF_FONT_FAMILY
     else:
         font_family = "Helvetica"
