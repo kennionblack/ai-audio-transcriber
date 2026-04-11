@@ -1,6 +1,5 @@
 import os
 
-
 from faster_whisper import WhisperModel
 
 from tools import print_verbose
