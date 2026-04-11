@@ -143,3 +143,10 @@ async def test_coordinator_delegates_to_cleaner(mock_openai, coordinator_agent):
     # Coordinator must NOT call get_transcript directly
     assert "get_transcript" not in called_tools
 
+def test_invalid_audio_path_exits(monkeypatch):
+    import agent
+    
+    monkeypatch.setattr(agent, "validate_audio_path", lambda _: False)
+
+    with pytest.raises(SystemExit):
+        agent.main(Path("bad.mp3"))
