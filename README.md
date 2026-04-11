@@ -109,3 +109,5 @@ The agent pipeline is defined in `agents.yaml` and consists of two agents:
 2. **Cleaner** — Cleans and formats the raw transcription (filler-word removal, grammar fixes, punctuation) and generates a bullet-point summary, then returns the result to the coordinator.
 
 Audio transcription is handled by [faster-whisper](https://github.com/SYSTRAN/faster-whisper) running locally (no external API call for transcription). The Whisper model runs on CPU by default (`base.en`, int8 precision).
+
+test
