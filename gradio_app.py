@@ -1,7 +1,6 @@
 """Gradio frontend for running `agent.py` and showing streamed results."""
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -10,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 import gradio as gr
+
 from runtime_events import EVENT_PREFIX
 
 # Audio file types the app accepts.

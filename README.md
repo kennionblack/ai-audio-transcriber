@@ -86,6 +86,21 @@ This builds from `Dockerfile.dev` and volume-mounts the project into the contain
 - If import squiggles appear, use the command palette → `Python: Select Interpreter` → choose `/usr/local/bin/python` (3.12).
 - Place audio files in your local repo's `audio/` folder as these contents will be mirrored to the container. The contents of this folder are included in the .gitignore to avoid large file uploads.
 
+## Linting
+
+This project uses [ruff](https://docs.astral.sh/ruff/) for linting. A [pre-commit](https://pre-commit.com/) hook runs ruff automatically on every push.
+
+```bash
+# install the pre-push hook (done automatically in the dev container)
+pre-commit install --hook-type pre-push
+
+# run the linter manually
+ruff check .
+
+# auto-fix what ruff can fix
+ruff check --fix .
+```
+
 ## Pipeline
 
 The agent pipeline is defined in `agents.yaml` and consists of two agents:

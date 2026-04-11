@@ -8,7 +8,8 @@ from typing import Any
 from docx import Document
 from fpdf import FPDF
 
-# PDF layout constants. Units are in points (1/72 inch). These can be adjusted as needed for different formatting preferences.
+# PDF layout constants. Units are in points (1/72 inch). These can be adjusted as needed
+# for different formatting preferences.
 PDF_MARGIN = 72
 PDF_TEXT_SIZE = 11
 PDF_TITLE_SIZE = 16
@@ -26,7 +27,9 @@ PDF_FONT_CJK_BOLD = _FONTS_DIR / "font-cjk-bold.ttf"
 
 
 
-# This function takes the cleaned transcript, summary, and metadata, and writes them to JSON, DOCX, and PDF files in the specified output directory. It returns a dictionary with the paths to each of the generated files.
+# This function takes the cleaned transcript, summary, and metadata, and writes them to JSON,
+# DOCX, and PDF files in the specified output directory. It returns a dictionary with the paths
+# to each of the generated files.
 def write_outputs(
     *,
     output_dir: Path,

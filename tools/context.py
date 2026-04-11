@@ -1,14 +1,13 @@
 import json
 import os
 import re
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from tools.exporters import write_outputs
-from tools import print_verbose
 from runtime_events import emit_event
+from tools import print_verbose
+from tools.exporters import write_outputs
 
 # This allows us to set our own output directory in an env var if desired
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "output"))
@@ -46,7 +45,8 @@ class TranscriptContext:
     cleaned_transcript: str | None = None
     # This field syntax makes the summary list mutable in a dataclass
     summary: list[str] = field(default_factory=list)
-    # If we want to add metadata like audio duration, speaker names, or other relevant details we can store it here and have tools to set/get specific metadata keys as needed
+    # If we want to add metadata like audio duration, speaker names, or other relevant
+    # details we can store it here and have tools to set/get specific metadata keys as needed
     metadata: dict[str, Any] = field(default_factory=dict)
     audio_filename: str | None = None
     # Translations keyed by language code (e.g. {"zh": "...", "fr": "..."})
@@ -56,9 +56,12 @@ class TranscriptContext:
     # Callback invoked when transcription completed, currently used to trigger translation when language specified
     on_translation_ready: Any = None
 
-    # These values are arbitrary, we can discuss what amount of bullet points should be generated 
-    # If we want the user to choose their own amount of bullet points, we can write a tool to store that amount in this context and have the validation read from that instead of hardcoded values
-    # Another alternative is to pass the desired number of bullet points as a command line arg, which might be nice for the gui as we can just modify the command that's run when the user kicks off the pipeline
+    # These values are arbitrary, we can discuss what amount of bullet points should be generated
+    # If we want the user to choose their own amount of bullet points, we can write a tool
+    # to store that amount in this context and have the validation read from that instead of
+    # hardcoded values. Another alternative is to pass the desired number of bullet points as
+    # a command line arg, which might be nice for the gui as we can just modify the command
+    # that's run when the user kicks off the pipeline
     min_bullets: int = 3
     max_bullets: int = 15
 

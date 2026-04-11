@@ -7,9 +7,9 @@ from pathlib import Path
 from openai import AsyncOpenAI
 
 from runtime_events import emit_event
+from tools import print_verbose
 from tools.context import get_context
 from tools.exporters import write_outputs
-from tools import print_verbose
 
 # Supported translation languages, we can change this if we want
 SUPPORTED_LANGUAGES: dict[str, str] = {

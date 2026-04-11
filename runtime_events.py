@@ -1,6 +1,5 @@
 import json
 
-
 # Every event line starts with this so Gradio can spot it in stdout.
 EVENT_PREFIX = "EVENT:"
 
