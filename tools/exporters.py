@@ -65,7 +65,10 @@ def write_outputs(
     }
 
 
-# This helper function constructs a structured content dictionary that includes the audio filename, cleaned transcript (or raw transcript if cleaned is unavailable), summary, and metadata. 
+# This helper function constructs a structured content dictionary that includes the audio filename,
+# cleaned transcript (or raw transcript if cleaned is unavailable),
+# summary, and
+# metadata.
 def _build_export_content(
     audio_filename: str | None,
     cleaned_transcript: str | None,
@@ -86,7 +89,11 @@ def _build_export_content(
     }
 
 
-# The following two functions, _write_docx and _write_pdf, are responsible for generating the DOCX and PDF files respectively. They take the structured content dictionary and format it appropriately for each file type, including headings, paragraphs, and metadata sections. 
+# The following two functions, _write_docx and _write_pdf,
+# are responsible for generating the DOCX and PDF files respectively.
+# They take the structured content dictionary and format it appropriately for each file type, including headings,
+# paragraphs, and
+# metadata sections. 
 def _write_docx(path: Path, content: dict[str, Any]) -> None:
     document = Document()
     document.add_heading(content["title"], level=1)
@@ -112,7 +119,10 @@ def _write_docx(path: Path, content: dict[str, Any]) -> None:
     document.save(str(path))
 
 
-# The _write_pdf function creates a PDF file with a structured layout that includes the title, metadata, summary, and transcript.
+# The _write_pdf function creates a PDF file with a structured layout that includes the title,
+# metadata,
+# summary, and
+# transcript.
 
 def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     pdf = FPDF(format="letter", unit="pt")
@@ -158,7 +168,11 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     pdf.output(str(path))
 
 
-# The following two helper functions, _pdf_heading and _pdf_line, are used to format the headings and lines of text in the PDF document. The _pdf_heading function sets the font to bold and adjusts the size for section headings, while the _pdf_line function sets the font for regular text lines. Both functions handle line spacing and ensure that the text is properly aligned within the PDF layout.
+# The following two helper functions, _pdf_heading and _pdf_line,
+# are used to format the headings and lines of text in the PDF document.
+# The _pdf_heading function sets the font to bold and adjusts the size for section headings,
+# while the _pdf_line function sets the font for regular text lines.
+# Both functions handle line spacing and ensure that the text is properly aligned within the PDF layout.
 def _pdf_heading(pdf: FPDF, text: str, size: int, font_family: str = PDF_FONT_FAMILY) -> None:
     pdf.ln(PDF_LINE_HEIGHT / 2)
     pdf.set_font(font_family, style="B", size=size)
@@ -166,7 +180,10 @@ def _pdf_heading(pdf: FPDF, text: str, size: int, font_family: str = PDF_FONT_FA
     pdf.multi_cell(w=pdf.epw, h=PDF_LINE_HEIGHT, text=text)
 
 
-# The _pdf_line function is responsible for writing a line of text to the PDF document. It sets the font to a regular style and the specified text size, then uses the multi_cell method to write the text with proper line spacing and alignment within the PDF's margins.
+# The _pdf_line function is responsible for writing a line of text to the PDF document.
+# It sets the font to a regular style and the specified text size,
+# then uses the multi_cell method to write the text with proper line
+# spacing and alignment within the PDF's margins.
 def _pdf_line(pdf: FPDF, text: str, font_family: str = PDF_FONT_FAMILY) -> None:
     pdf.set_font(font_family, size=PDF_TEXT_SIZE)
     pdf.set_x(pdf.l_margin)
