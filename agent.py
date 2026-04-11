@@ -1,24 +1,21 @@
 import argparse
 import asyncio
 import json
+import os
 import signal
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
+import tools
 from config import Agent, load_config
 from runtime_events import emit_event
+from tools.context import OUTPUT_DIR, get_context
 from tools.toolbox import ToolBox
-from tools.context import get_context
-import tools
-
-from dotenv import load_dotenv
-import os
-
 from tools.transcription import load_audio_file
 from tools.translation import SUPPORTED_LANGUAGES, parse_language, run_translation
-from tools.context import OUTPUT_DIR
 
 load_dotenv()
 
@@ -65,7 +62,8 @@ def _build_final_payload(result: str) -> dict[str, object]:
 
     if transcription or summary:
         summary_text = "\n".join(f"- {item}" for item in summary)
-        content_parts = [part for part in [transcription, f"Summary\n{summary_text}".strip() if summary_text else ""] if part]
+        summary_block = f"Summary\n{summary_text}".strip() if summary_text else ""
+        content_parts = [part for part in [transcription, summary_block] if part]
         return {
             "content": "\n\n".join(content_parts).strip(),
             "transcription": transcription,
@@ -133,7 +131,7 @@ async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
             tools=tools,
             **agent.get("kwargs", {}),
         )
-        
+
         history += response.output
 
         for item in response.output:
@@ -188,7 +186,7 @@ async def async_main(audio_path: Path, translate_lang: str | None = None, mode: 
     )
     tool_box.set_transcription_task(transcription_task)
 
-    # If we have a translation language specified, set callback for translation 
+    # If we have a translation language specified, set callback for translation
     # Callback invoked in the _on_complete hook in context.py after transcript and summary exist
     translation_task = None
     if translate_lang:

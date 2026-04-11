@@ -39,6 +39,7 @@ def load_audio_file(file_path: str) -> str:
             text = segment.text.strip()
             full_transcript.append(text)
 
+
         return " ".join(full_transcript)
 
     except Exception as e:
