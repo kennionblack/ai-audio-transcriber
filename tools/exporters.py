@@ -93,7 +93,7 @@ def _build_export_content(
 # are responsible for generating the DOCX and PDF files respectively.
 # They take the structured content dictionary and format it appropriately for each file type, including headings,
 # paragraphs, and
-# metadata sections. 
+# metadata sections.
 def _write_docx(path: Path, content: dict[str, Any]) -> None:
     document = Document()
     document.add_heading(content["title"], level=1)
