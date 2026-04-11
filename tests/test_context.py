@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import patch
 
-from tools.context import get_context, _reset_context
+import pytest
+
+from tools.context import _reset_context, get_context
 
 
 @pytest.fixture(autouse=True)
@@ -127,7 +128,7 @@ def test_on_complete_handles_write_failure():
         ctx.cleaned_transcript = "clean"
         ctx.set_summary(["a", "b", "c"])
 
-    # Should not raise even though error sideeffect. 
+    # Should not raise even though error sideeffect.
 
 
 # Translation Tests

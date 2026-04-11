@@ -1,9 +1,10 @@
-import pytest
-from unittest.mock import AsyncMock, patch
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
-from tools.context import get_context
+import pytest
+
 import agent
+from tools.context import get_context
 
 
 def make_agent(name: str):

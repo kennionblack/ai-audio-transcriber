@@ -145,7 +145,7 @@ async def test_coordinator_delegates_to_cleaner(mock_openai, coordinator_agent):
 
 def test_invalid_audio_path_exits(monkeypatch):
     import agent
-    
+
     monkeypatch.setattr(agent, "validate_audio_path", lambda _: False)
 
     with pytest.raises(SystemExit):
