@@ -24,12 +24,9 @@ PDF_FONT_REGULAR = _FONTS_DIR / "font-regular.ttf"
 PDF_FONT_BOLD = _FONTS_DIR / "font-bold.ttf"
 PDF_FONT_CJK_REGULAR = _FONTS_DIR / "font-cjk-regular.ttf"
 PDF_FONT_CJK_BOLD = _FONTS_DIR / "font-cjk-bold.ttf"
-# Prefer Windows system CJK fonts when available. These are more compatible with
-# common PDF renderers than the bundled CFF-based CJK fonts.
-PDF_FONT_WINDOWS_CJK_CANDIDATES = (
-    Path(r"C:\Windows\Fonts\simsun.ttc"),
-    Path(r"C:\Windows\Fonts\msyh.ttc"),
-)
+# Bundled CJK font used as the primary candidate, works on all platforms.
+# The bundled font is committed to the repo at assets/fonts/ so it is always present.
+PDF_CJK_FONT_CANDIDATES = (PDF_FONT_CJK_REGULAR,)
 
 
 
@@ -148,12 +145,14 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
             font_family = PDF_FONT_FAMILY
 
         fallback_family: str | None = None
-        for i, candidate in enumerate(PDF_FONT_WINDOWS_CJK_CANDIDATES):
+        for candidate in PDF_CJK_FONT_CANDIDATES:
             if not candidate.exists():
                 continue
-            family = f"{PDF_FONT_FAMILY_CJK}Win{i}"
-            pdf.add_font(family, style="", fname=str(candidate), collection_font_number=0)
-            fallback_family = family
+            kwargs: dict[str, Any] = {}
+            if candidate.suffix.lower() == ".ttc":
+                kwargs["collection_font_number"] = 0
+            pdf.add_font(PDF_FONT_FAMILY_CJK, style="", fname=str(candidate), **kwargs)
+            fallback_family = PDF_FONT_FAMILY_CJK
             cjk_registered = True
             break
 
