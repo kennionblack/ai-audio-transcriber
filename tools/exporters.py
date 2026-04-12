@@ -24,6 +24,12 @@ PDF_FONT_REGULAR = _FONTS_DIR / "font-regular.ttf"
 PDF_FONT_BOLD = _FONTS_DIR / "font-bold.ttf"
 PDF_FONT_CJK_REGULAR = _FONTS_DIR / "font-cjk-regular.ttf"
 PDF_FONT_CJK_BOLD = _FONTS_DIR / "font-cjk-bold.ttf"
+# Prefer Windows system CJK fonts when available. These are more compatible with
+# common PDF renderers than the bundled CFF-based CJK fonts.
+PDF_FONT_WINDOWS_CJK_CANDIDATES = (
+    Path(r"C:\Windows\Fonts\simsun.ttc"),
+    Path(r"C:\Windows\Fonts\msyh.ttc"),
+)
 
 
 
@@ -133,15 +139,41 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     pdf.set_auto_page_break(auto=True, margin=PDF_MARGIN)
     pdf.set_compression(False)
 
-    if PDF_FONT_REGULAR.exists() and PDF_FONT_BOLD.exists():
-        pdf.add_font(PDF_FONT_FAMILY, style="", fname=str(PDF_FONT_REGULAR))
-        pdf.add_font(PDF_FONT_FAMILY, style="B", fname=str(PDF_FONT_BOLD))
-        if PDF_FONT_CJK_REGULAR.exists() and PDF_FONT_CJK_BOLD.exists():
+    font_family = "Helvetica"
+    cjk_registered = False
+    try:
+        if PDF_FONT_REGULAR.exists() and PDF_FONT_BOLD.exists():
+            pdf.add_font(PDF_FONT_FAMILY, style="", fname=str(PDF_FONT_REGULAR))
+            pdf.add_font(PDF_FONT_FAMILY, style="B", fname=str(PDF_FONT_BOLD))
+            font_family = PDF_FONT_FAMILY
+
+        fallback_family: str | None = None
+        for i, candidate in enumerate(PDF_FONT_WINDOWS_CJK_CANDIDATES):
+            if not candidate.exists():
+                continue
+            family = f"{PDF_FONT_FAMILY_CJK}Win{i}"
+            pdf.add_font(family, style="", fname=str(candidate), collection_font_number=0)
+            fallback_family = family
+            cjk_registered = True
+            break
+
+        if fallback_family is None and PDF_FONT_CJK_REGULAR.exists() and PDF_FONT_CJK_BOLD.exists():
             pdf.add_font(PDF_FONT_FAMILY_CJK, style="", fname=str(PDF_FONT_CJK_REGULAR))
             pdf.add_font(PDF_FONT_FAMILY_CJK, style="B", fname=str(PDF_FONT_CJK_BOLD))
-            pdf.set_fallback_fonts([PDF_FONT_FAMILY_CJK])
-        font_family = PDF_FONT_FAMILY
-    else:
+            fallback_family = PDF_FONT_FAMILY_CJK
+            cjk_registered = True
+
+        if fallback_family is not None:
+            # Use non-exact matching so CJK fallback still applies when style differs (e.g. bold headings).
+            try:
+                pdf.set_fallback_fonts([fallback_family], exact_match=False)
+            except TypeError:
+                pdf.set_fallback_fonts([fallback_family])
+
+        if font_family == "Helvetica" and cjk_registered:
+            font_family = fallback_family or PDF_FONT_FAMILY_CJK
+    except Exception:
+        # If custom font registration fails, fall back to a core PDF font.
         font_family = "Helvetica"
 
     pdf.add_page()
@@ -175,7 +207,11 @@ def _write_pdf(path: Path, content: dict[str, Any]) -> None:
 # Both functions handle line spacing and ensure that the text is properly aligned within the PDF layout.
 def _pdf_heading(pdf: FPDF, text: str, size: int, font_family: str = PDF_FONT_FAMILY) -> None:
     pdf.ln(PDF_LINE_HEIGHT / 2)
-    pdf.set_font(font_family, style="B", size=size)
+    try:
+        pdf.set_font(font_family, style="B", size=size)
+    except Exception:
+        # Some fallback font registrations may not have a bold variant.
+        pdf.set_font(font_family, size=size)
     pdf.set_x(pdf.l_margin)
     pdf.multi_cell(w=pdf.epw, h=PDF_LINE_HEIGHT, text=text)
 
