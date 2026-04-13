@@ -29,6 +29,8 @@ PDF_FONT_STANDARD_CJK = "STSong-Light"
 _FONTS_DIR = Path(__file__).parent.parent / "assets" / "fonts"
 _PDF_FONT_TTF_REGULAR = "TranscriberRegular"
 _PDF_FONT_TTF_BOLD = "TranscriberBold"
+_PDF_FONT_TTF_CJK = "TranscriberCJK"
+_PDF_FONT_TTF_CJK_BOLD = "TranscriberCJKBold"
 
 
 
@@ -130,7 +132,7 @@ def _write_docx(path: Path, content: dict[str, Any]) -> None:
 # transcript.
 
 def _write_pdf(path: Path, content: dict[str, Any]) -> None:
-    body_font, heading_font = _resolve_pdf_fonts()
+    body_font, heading_font = _resolve_pdf_fonts(content)
     styles = _build_pdf_styles(body_font=body_font, heading_font=heading_font)
 
     doc = SimpleDocTemplate(
@@ -217,11 +219,39 @@ def _build_pdf_styles(*, body_font: str, heading_font: str) -> dict[str, Paragra
     }
 
 
-def _resolve_pdf_fonts() -> tuple[str, str]:
+def _content_has_cjk(content: dict[str, Any]) -> bool:
+    parts: list[str] = [content.get("title", "")]
+    parts.extend(content.get("summary", []))
+    parts.extend(content.get("transcript_lines", []))
+    text = " ".join(parts)
+    return any(0x4E00 <= ord(c) <= 0x9FFF or 0x3400 <= ord(c) <= 0x4DBF for c in text)
+
+
+def _try_register_cjk_ttf_fonts() -> bool:
+    regular_path = _FONTS_DIR / "font-cjk-regular.ttf"
+    bold_path = _FONTS_DIR / "font-cjk-bold.ttf"
+    if not regular_path.exists():
+        return False
+    try:
+        if _PDF_FONT_TTF_CJK not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(_PDF_FONT_TTF_CJK, str(regular_path)))
+        bold_name = _PDF_FONT_TTF_CJK_BOLD if bold_path.exists() else _PDF_FONT_TTF_CJK
+        if bold_path.exists() and bold_name not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(bold_name, str(bold_path)))
+        return True
+    except Exception:
+        return False
+
+
+def _resolve_pdf_fonts(content: dict[str, Any]) -> tuple[str, str]:
+    if _content_has_cjk(content):
+        if _try_register_cjk_ttf_fonts():
+            bold_name = _PDF_FONT_TTF_CJK_BOLD if (_FONTS_DIR / "font-cjk-bold.ttf").exists() else _PDF_FONT_TTF_CJK
+            return _PDF_FONT_TTF_CJK, bold_name
+        if _try_register_cid_font(PDF_FONT_STANDARD_CJK):
+            return PDF_FONT_STANDARD_CJK, PDF_FONT_STANDARD_CJK
     if _try_register_ttf_fonts():
         return _PDF_FONT_TTF_REGULAR, _PDF_FONT_TTF_BOLD
-    if _try_register_cid_font(PDF_FONT_STANDARD_CJK):
-        return PDF_FONT_STANDARD_CJK, PDF_FONT_STANDARD_CJK
     return PDF_FONT_STANDARD, PDF_FONT_STANDARD_BOLD
 
 
