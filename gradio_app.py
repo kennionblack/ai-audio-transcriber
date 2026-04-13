@@ -15,6 +15,7 @@ from tools.translation import SUPPORTED_LANGUAGES
 
 # Audio file types the app accepts.
 SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac"}
+OUTPUT_DIR = Path(__file__).parent / "output"
 IDLE_STATUS = "Idle"
 RUNNING_STATUS = "Running"
 READY_TEXT = "Ready."
@@ -51,6 +52,8 @@ APP_STATE = {
     "translations": {},
     "translated_summaries": {},
     "pdf_output": None,
+    # Language code passed to the backend for this run, or None.
+    "translate_lang": None,
     # Log file for the current run.
     "log_path": None,
     # The UI and the background reader both use this state, so the lock keeps
@@ -67,6 +70,28 @@ def _reset_session_outputs() -> None:
     APP_STATE["translations"] = {}
     APP_STATE["translated_summaries"] = {}
     APP_STATE["pdf_output"] = None
+    APP_STATE["translate_lang"] = None
+
+
+def _find_translated_pdf(source_pdf_path: str | None, language_code: str) -> str | None:
+    """Return the most recent translated PDF for *language_code*."""
+    if not source_pdf_path:
+        return None
+    source = Path(source_pdf_path)
+    stem = source.stem
+    parent = source.parent if source.parent.exists() else OUTPUT_DIR
+    pattern = re.compile(
+        rf"^{re.escape(stem)}_{re.escape(language_code)}(?:_(\d+))?\.pdf$",
+        re.IGNORECASE,
+    )
+    best, highest = None, -1
+    for p in parent.iterdir():
+        m = pattern.match(p.name)
+        if m:
+            n = int(m.group(1)) if m.group(1) else 0
+            if n > highest:
+                highest, best = n, p
+    return str(best) if best else None
 
 
 def _set_running_session(process: subprocess.Popen) -> None:
@@ -246,6 +271,7 @@ def transcribe(audio_path: str | None, language_value: str | None) -> tuple[str,
     with APP_STATE["lock"]:
         # Start a fresh session for this new run.
         _set_running_session(process)
+        APP_STATE["translate_lang"] = translate_lang
 
     # Keep reading backend output without blocking the page.
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
@@ -257,8 +283,10 @@ def refresh_outputs(language_value: str | None) -> tuple[str, str, str | None]:
     # Take one snapshot of the current results, then build the UI response from it.
     output, transcription_text, summary_text, pdf_path, status = _snapshot_results()
     language_code = _language_value_to_code(language_value)
+    with APP_STATE["lock"]:
+        run_language = APP_STATE["translate_lang"]
 
-    if language_code:
+    if language_code and language_code == run_language:
         language_name = SUPPORTED_LANGUAGES[language_code]
         with APP_STATE["lock"]:
             translated_transcript = APP_STATE["translations"].get(language_code, "")
@@ -273,7 +301,8 @@ def refresh_outputs(language_value: str | None) -> tuple[str, str, str | None]:
             displayed_summary = ""
 
         if status.startswith("Completed"):
-            return displayed_transcript or output or NO_OUTPUT_TEXT, displayed_summary, pdf_path
+            translated_pdf = _find_translated_pdf(pdf_path, run_language)
+            return displayed_transcript or output or NO_OUTPUT_TEXT, displayed_summary, translated_pdf or pdf_path
         if status.startswith("Failed"):
             return f"Transcription failed.\n\n{output or NO_OUTPUT_TEXT}", "", None
         if status == RUNNING_STATUS:
