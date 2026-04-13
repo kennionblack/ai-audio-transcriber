@@ -12,7 +12,7 @@ VERBOSE = False
 def print_verbose(*args, **kwargs):
     """Print only when --verbose flag is set."""
     if VERBOSE:
-        print(*args, **kwargs)
+        print(*args, **kwargs, flush=True)
 
 def register_all_tools(tool_box):
     tools_dir = Path(__file__).parent
