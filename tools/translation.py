@@ -136,5 +136,5 @@ async def run_translation(
         audio_filename=audio_filename,
     )
 
-    emit_event("translation_complete", language)
+    emit_event("translation_complete", language=language)
     print_verbose(f"[translate] translation to {language} complete")
