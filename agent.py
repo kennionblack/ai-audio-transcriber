@@ -24,7 +24,7 @@ VERBOSE = False
 def print_verbose(*args, **kwargs):
     """Print only when --verbose flag is set."""
     if VERBOSE:
-        print(*args, **kwargs)
+        print(*args, **kwargs, flush=True)
 
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()

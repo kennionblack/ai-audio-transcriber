@@ -414,7 +414,8 @@ with gr.Blocks(title="AI Audio Transcriber Demo") as app:
                     label="Output Language",
                     choices=TRANSLATION_CHOICES,
                     value=NO_TRANSLATION_OPTION,
-                    info="Choose this before Transcribe. The selected language replaces the displayed transcript and summary when ready.",
+                    info="Choose this before Transcribe. " \
+                    "The selected language replaces the displayed transcript and summary when ready.",
                 )
                 with gr.Row():
                     transcribe_button = gr.Button("Transcribe", variant="primary")
