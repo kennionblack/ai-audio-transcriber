@@ -46,6 +46,8 @@ h3 {
   grid-template-columns: 1.65fr 1fr;
   gap: 0.9rem;
   margin-bottom: 0.9rem;
+  background: #002e5d;
+  border-color: #1a4a7b;
 }
 
 .brand-wrap {
@@ -63,7 +65,7 @@ h3 {
 
 .eyebrow {
   margin: 0 0 0.15rem;
-  color: #7b8ba4;
+  color: #c7d8ef;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   font-size: 0.73rem;
@@ -72,11 +74,12 @@ h3 {
 
 .brand-text h1 {
   font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+  color: #ffffff;
 }
 
 .brand-text p {
   margin: 0.3rem 0 0;
-  color: var(--muted);
+  color: #d7e5f7;
   line-height: 1.35;
 }
 
@@ -106,7 +109,7 @@ h3 {
   align-items: center;
   justify-content: flex-end;
   gap: 0.55rem;
-  color: var(--muted);
+  color: #d6e5f8;
   font-size: 0.81rem;
   margin-left: auto;
 }
@@ -143,6 +146,41 @@ h3 {
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 0.95rem;
+}
+
+.site-footer {
+  margin-top: 0.95rem;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  text-align: center;
+  background: #002e5d;
+  color: #ffffff;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+  padding: 1rem 1rem 0.92rem;
+}
+
+.footer-meta {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(0.82rem, 1.8vw, 1.03rem);
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.footer-links {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(0.82rem, 1.8vw, 1.03rem);
+  line-height: 1.35;
+  font-weight: 600;
 }
 
 .left-column,
@@ -579,4 +617,30 @@ button.primary {
   .lookup-row {
     flex-direction: column;
   }
+
+  .site-footer {
+    margin-top: 0.75rem;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    gap: 0.34rem;
+    padding: 0.88rem 0.78rem 0.8rem;
+  }
+
+  .footer-meta,
+  .footer-links {
+    font-size: 0.84rem;
+  }
+}
+
+footer.site-footer {
+  background-color: #002e5d !important;
+  text-align: center !important;
+}
+
+footer.site-footer .footer-meta,
+footer.site-footer .footer-links {
+  width: 100%;
+  color: #ffffff !important;
+  text-align: center !important;
 }
