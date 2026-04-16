@@ -6,6 +6,7 @@ __pycache__
 # generated output files
 /output/*
 !/output/.gitkeep
+!/upload/.gitkeep
 
 logs/*
 

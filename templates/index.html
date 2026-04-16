@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VoxAI</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="site-header panel">
+    <div class="brand-wrap">
+      <img src="/static/voxai-logo.png" alt="VoxAI logo" class="brand-logo">
+      <div class="brand-text">
+        <p class="eyebrow">Enterprise Audio Intelligence</p>
+        <h1>VoxAI Transcriber</h1>
+        <p>Formal transcription operations workspace for corporate teams and reporting pipelines.</p>
+      </div>
+    </div>
+    <div class="header-meta">
+      <div class="meta-status">
+        <span id="wsBadge" class="ws-badge connecting">Connecting</span>
+        <span id="lastRefreshText">Last refresh: --</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div class="left-column">
+      <section class="panel controls">
+        <h2>Run Controls</h2>
+        <div id="statusBadge" class="status-pill idle">
+          <span class="dot"></span>
+          <span class="label">Idle</span>
+        </div>
+        <p id="noticeText" class="notice">Ready. Upload audio and start a run.</p>
+
+        <form id="runForm">
+          <label class="field">
+            <span>Audio File</span>
+            <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac" required>
+          </label>
+          <label class="field">
+            <span>Output Language</span>
+            <select id="languageSelect">
+              <option value="">Original output</option>
+              {% for code, name in languages.items() %}
+                <option value="{{ code }}">{{ code }} - {{ name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="button-row">
+            <button type="submit" id="startRunBtn" class="primary">Start Run</button>
+            <button type="button" id="clearBtn">Clear</button>
+            <button type="button" id="bundleBtn">Build Bundle</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel artifacts">
+        <h2>Artifact Center</h2>
+        <p class="artifact-note">Select an artifact type, then download the currently available file.</p>
+        <label class="field artifact-field">
+          <span>Artifact Type</span>
+          <select id="artifactSelect">
+            <option value="pdf">PDF Report</option>
+            <option value="docx">DOCX Report</option>
+            <option value="json">JSON Package</option>
+            <option value="bundle">Bundle (ZIP)</option>
+          </select>
+        </label>
+        <div class="artifact-status-card">
+          <p class="ops-label">Availability</p>
+          <p class="ops-value" id="artifactStatus">Pending</p>
+        </div>
+        <div class="artifact-action-row">
+          <a id="artifactDownloadLink" class="download disabled" href="#" aria-disabled="true">Download PDF Report</a>
+        </div>
+      </section>
+
+      <section class="panel operations">
+        <h2>Operations Snapshot</h2>
+        <div class="ops-grid">
+          <article>
+            <p class="ops-label">Active View</p>
+            <p class="ops-value" id="opsLanguage">Original</p>
+          </article>
+          <article>
+            <p class="ops-label">Input File</p>
+            <p class="ops-value" id="opsSourceFile">Not set</p>
+          </article>
+          <article>
+            <p class="ops-label">Last Update</p>
+            <p class="ops-value" id="opsLastUpdated">--</p>
+          </article>
+          <article>
+            <p class="ops-label">Connection</p>
+            <p class="ops-value" id="opsConnection">Connecting</p>
+          </article>
+        </div>
+        <h3>Run Checklist</h3>
+        <ul class="checklist">
+          <li id="checkInput">Input attached</li>
+          <li id="checkRun">Pipeline running</li>
+          <li id="checkExport">Exports generated</li>
+        </ul>
+      </section>
+
+      <section class="panel platform-meta">
+        <div class="standalone-meta-pills">
+          <span class="meta-pill">Whisper + Agent Pipeline</span>
+          <span class="meta-pill">Audit-Friendly Logs</span>
+          <span class="meta-pill">PDF / DOCX / JSON Exports</span>
+        </div>
+      </section>
+    </div>
+
+    <div class="right-column">
+      <section class="panel monitor">
+        <h2>Live Monitor</h2>
+        <div class="metric-grid">
+          <article class="metric">
+            <p class="label">Status</p>
+            <p class="value" id="metricStatus">Idle</p>
+          </article>
+          <article class="metric">
+            <p class="label">Runtime</p>
+            <p class="value" id="metricRuntime">--:--</p>
+          </article>
+          <article class="metric">
+            <p class="label">Words</p>
+            <p class="value" id="metricWords">0</p>
+          </article>
+          <article class="metric">
+            <p class="label">Bullets</p>
+            <p class="value" id="metricBullets">0</p>
+          </article>
+          <article class="metric">
+            <p class="label">Active View</p>
+            <p class="value" id="metricView">Original</p>
+          </article>
+          <article class="metric">
+            <p class="label">Exports</p>
+            <p class="value" id="metricExports">0</p>
+          </article>
+        </div>
+        <div class="timeline">
+          <h3>Event Timeline</h3>
+          <ul id="timelineList">
+            <li class="timeline-empty">Start a run to populate timeline events.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="panel results">
+        <h2>Results Workspace</h2>
+        <div class="tab-header">
+          <button class="tab-btn active" data-tab="transcript">Transcript</button>
+          <button class="tab-btn" data-tab="summary">Summary</button>
+          <button class="tab-btn" data-tab="logs">Logs</button>
+          <button class="tab-btn" data-tab="lookup">Lookup</button>
+        </div>
+
+        <div class="tab-panel active" id="tab-transcript">
+          <div class="toolbar">
+            <button type="button" id="copyTranscriptBtn">Copy Transcript</button>
+            <span id="copyToast"></span>
+          </div>
+          <textarea id="transcriptOutput" readonly></textarea>
+        </div>
+
+        <div class="tab-panel" id="tab-summary">
+          <textarea id="summaryOutput" readonly></textarea>
+        </div>
+
+        <div class="tab-panel" id="tab-logs">
+          <pre id="logOutput">No log output yet.</pre>
+        </div>
+
+        <div class="tab-panel" id="tab-lookup">
+          <div class="lookup-row">
+            <input id="lookupInput" type="text" placeholder="Enter a word or phrase">
+            <button type="button" id="lookupBtn">Lookup</button>
+          </div>
+          <pre id="lookupOutput"></pre>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
