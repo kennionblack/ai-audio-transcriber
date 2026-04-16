@@ -7,25 +7,41 @@
   <link rel="icon" type="image/png" href="/static/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260416-footer">
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=20260416-header">
 </head>
 <body>
-  <header class="site-header panel">
-    <div class="brand-wrap">
-      <img src="/static/voxai-logo.png" alt="VoxAI logo" class="brand-logo">
-      <div class="brand-text">
-        <p class="eyebrow">Enterprise Audio Intelligence</p>
-        <h1>VoxAI Transcriber</h1>
-        <p>Formal transcription operations workspace for corporate teams and reporting pipelines.</p>
+  <header class="site-header" aria-label="Site header">
+    <div class="header-top">
+      <div class="header-brand">
+        <div class="header-mark" aria-hidden="true">
+          <img src="/static/voxai-logo.png" alt="" class="header-mark-logo">
+          <p class="header-wordmark">VoxAI</p>
+        </div>
+        <div class="header-identity">
+          <p class="identity-line">Enterprise Audio Intelligence Platform</p>
+          <h1>VoxAI Transcriber</h1>
+        </div>
+      </div>
+      <div class="header-meta">
+        <div class="header-actions">
+          <!-- <button type="button" class="header-login-btn">Log In</button> -->
+          <!-- <button type="button" class="header-search-btn" aria-label="Search"></button> -->
+        </div>
+        <div class="meta-status">
+          <span id="wsBadge" class="ws-badge connecting">Connecting</span>
+          <span id="lastRefreshText">Last refresh: --</span>
+        </div>
       </div>
     </div>
-    <div class="header-meta">
-      <div class="meta-status">
-        <span id="wsBadge" class="ws-badge connecting">Connecting</span>
-        <span id="lastRefreshText">Last refresh: --</span>
-      </div>
-    </div>
+    <nav class="header-nav" aria-label="Primary navigation">
+      <!-- <a href="#">Page</a>
+      <a href="#">Page</a>
+      <a href="#">Page</a>
+      <a href="#">Page</a>
+      <a href="#">page</a>
+      <a href="#">Page</a> -->
+    </nav>
   </header>
 
   <main class="layout">
