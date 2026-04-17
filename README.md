@@ -1,4 +1,4 @@
-# ai-audio-transcriber
+# VoxAI (ai-audio-transcriber)
 
 An end-to-end, multi-agent pipeline that turns raw audio input into structured qualitative insights. Upload an audio file (interview, lecture, meeting, etc.) and the pipeline will transcribe, clean, and summarize it automatically.
 
@@ -43,18 +43,19 @@ Supported translation languages: `en`, `zh`, `fr`, `es`, `de`, `ja`, `ko`, `pt`,
 
 Output files (cleaned transcript, summary JSON) are written to the `output/` directory.
 
-### GUI (Gradio frontend)
+### GUI (Advanced web frontend)
 
 ```bash
-python3 gradio_app.py
+python3 web_app.py
 ```
 
-This launches a web UI at **http://localhost:7860** where you can:
-- Upload an audio file via drag-and-drop or file picker
-- Click **Transcribe** to run the full agent pipeline
-- View the cleaned transcription and bullet-point summary as they complete
+This launches **VoxAI** at **http://localhost:7860** where you can:
+- Upload an audio file and start a run
+- Watch live progress and timeline updates over WebSocket
+- View transcript, summary, logs, and lookup results
+- Download PDF exports and build a bundle zip (exports + logs)
 
-Under the hood, `gradio_app.py` spawns `agent.py` as a subprocess and communicates via a structured event protocol (`runtime_events.py`). The UI auto-replies to the coordinator agent so the pipeline runs hands-free. Logs for each run are saved to a `logs/` directory.
+Under the hood, `web_app.py` spawns `agent.py` as a subprocess and consumes structured runtime events from `runtime_events.py`. Logs for each run are saved to `logs/`.
 
 ## Installation
 
