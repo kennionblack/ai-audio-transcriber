@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260416-header">
+  <link rel="stylesheet" href="/static/styles.css?v=20260416-header-footer-dropfix-lookupsize-80">
 </head>
 <body>
   <header class="site-header" aria-label="Site header">
@@ -57,7 +57,10 @@
         <form id="runForm">
           <label class="field">
             <span>Audio File</span>
-            <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac" required>
+            <div id="audioDropZone" class="file-dropzone" tabindex="0" role="button" aria-label="Choose or drop an audio file">
+              <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac" required>
+              <p id="audioDropHint" class="file-drop-hint">Or drag and drop an audio file here.</p>
+            </div>
           </label>
           <label class="field">
             <span>Output Language</span>
@@ -212,6 +215,6 @@
     <p class="footer-links">Privacy Notice | Cookie Preferences</p>
   </footer>
 
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=20260416-dropfix" defer></script>
 </body>
 </html>

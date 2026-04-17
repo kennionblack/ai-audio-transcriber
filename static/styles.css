@@ -23,7 +23,7 @@ html {
 
 body {
   margin: 0;
-  padding: 1.1rem;
+  padding: 0 1.1rem 0;
   font-family: "Source Sans 3", "Segoe UI", sans-serif;
   color: var(--text);
   background: linear-gradient(180deg, #f7f9fc, var(--bg));
@@ -389,6 +389,35 @@ h3 {
   color: var(--muted);
 }
 
+.file-dropzone {
+  border: 1px dashed #b7c9e7;
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 0.46rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.file-dropzone.dragging {
+  border-color: #2b63cb;
+  background: #e9f2ff;
+  box-shadow: 0 0 0 2px rgba(43, 99, 203, 0.16);
+}
+
+.file-dropzone:focus-visible {
+  outline: 2px solid #3f74cf;
+  outline-offset: 1px;
+}
+
+.file-dropzone input[type="file"] {
+  margin: 0;
+}
+
+.file-drop-hint {
+  margin: 0.36rem 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 input[type="file"],
 input[type="text"],
 select,
@@ -635,6 +664,14 @@ button.primary {
   border-radius: 10px;
 }
 
+#lookupBtn {
+  min-width: 4.96rem;
+  min-height: 1.72rem;
+  padding: 0.4rem 0.76rem;
+  font-size: 0.67rem;
+  border-radius: 10px;
+}
+
 .tab-btn.active {
   border: 0;
   background: linear-gradient(120deg, #2149bc, #226ddd);
@@ -728,7 +765,7 @@ button.primary {
 
 @media (max-width: 680px) {
   body {
-    padding: 0.7rem;
+    padding: 0 0.7rem 0;
   }
 
   .site-header {
@@ -803,6 +840,10 @@ button.primary {
 
   .lookup-row {
     flex-direction: column;
+  }
+
+  #lookupBtn {
+    width: 100%;
   }
 
   .site-footer {

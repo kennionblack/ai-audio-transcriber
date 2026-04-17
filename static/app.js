@@ -3,6 +3,8 @@ const refs = {
   noticeText: document.getElementById("noticeText"),
   runForm: document.getElementById("runForm"),
   audioFileInput: document.getElementById("audioFileInput"),
+  audioDropZone: document.getElementById("audioDropZone"),
+  audioDropHint: document.getElementById("audioDropHint"),
   languageSelect: document.getElementById("languageSelect"),
   clearBtn: document.getElementById("clearBtn"),
   bundleBtn: document.getElementById("bundleBtn"),
@@ -53,6 +55,8 @@ const ARTIFACT_LABELS = {
   json: "JSON Package",
   bundle: "Bundle (ZIP)",
 };
+const ACCEPTED_AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".flac"]);
+let audioDropDragDepth = 0;
 
 function getSelectedLanguage() {
   const code = (refs.languageSelect.value || "").trim().toLowerCase();
@@ -256,6 +260,129 @@ function renderState(state) {
   renderTimeline(state.timeline || []);
 }
 
+function getFileExtension(name) {
+  const value = String(name || "");
+  const dotIndex = value.lastIndexOf(".");
+  if (dotIndex < 0) return "";
+  return value.slice(dotIndex).toLowerCase();
+}
+
+function isAcceptedAudioFile(file) {
+  if (!file) return false;
+  const extension = getFileExtension(file.name);
+  if (ACCEPTED_AUDIO_EXTENSIONS.has(extension)) return true;
+  if (extension) return false;
+  const type = String(file.type || "").toLowerCase();
+  return ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac", "audio/x-flac", "audio/mp4", "audio/x-m4a"].includes(
+    type
+  );
+}
+
+function dragEventHasFiles(event) {
+  if (!event.dataTransfer) return false;
+  return Array.from(event.dataTransfer.types || []).includes("Files");
+}
+
+function setAudioDropDragging(active) {
+  if (!refs.audioDropZone) return;
+  refs.audioDropZone.classList.toggle("dragging", Boolean(active));
+}
+
+function syncAudioDropHint() {
+  if (!refs.audioDropHint) return;
+  const file = refs.audioFileInput.files && refs.audioFileInput.files[0];
+  refs.audioDropHint.textContent = file ? `Selected file: ${file.name}` : "Or drag and drop an audio file here.";
+}
+
+function assignAudioFile(file) {
+  if (!file) return false;
+  try {
+    if (typeof DataTransfer === "function") {
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      refs.audioFileInput.files = transfer.files;
+    } else {
+      return false;
+    }
+    refs.audioFileInput.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function onAudioDropZoneDragEnter(event) {
+  if (!dragEventHasFiles(event)) return;
+  event.preventDefault();
+  audioDropDragDepth += 1;
+  setAudioDropDragging(true);
+}
+
+function onAudioDropZoneDragOver(event) {
+  if (!dragEventHasFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function onAudioDropZoneDragLeave(event) {
+  if (!dragEventHasFiles(event)) return;
+  event.preventDefault();
+  audioDropDragDepth = Math.max(0, audioDropDragDepth - 1);
+  if (audioDropDragDepth === 0) setAudioDropDragging(false);
+}
+
+function onAudioDropZoneDrop(event) {
+  if (!dragEventHasFiles(event)) return;
+  event.preventDefault();
+  audioDropDragDepth = 0;
+  setAudioDropDragging(false);
+
+  const files = event.dataTransfer.files || [];
+  if (!files.length) return;
+  const file = files[0];
+  if (!isAcceptedAudioFile(file)) {
+    refs.noticeText.textContent = "Unsupported file type. Use .mp3, .wav, .m4a, or .flac.";
+    return;
+  }
+  if (!assignAudioFile(file)) {
+    refs.noticeText.textContent = "Drop detected, but file assignment was blocked. Use Choose File.";
+    return;
+  }
+  refs.noticeText.textContent = `Loaded ${file.name}. Click Start Run to begin.`;
+}
+
+function onAudioDropZoneClick(event) {
+  if (!refs.audioFileInput) return;
+  if (event.target === refs.audioDropZone || event.target === refs.audioDropHint) {
+    refs.audioFileInput.click();
+  }
+}
+
+function onAudioDropZoneKeydown(event) {
+  if (!refs.audioFileInput) return;
+  if (event.target !== refs.audioDropZone) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    refs.audioFileInput.click();
+  }
+}
+
+function setupAudioDropZone() {
+  if (!refs.audioDropZone || !refs.audioFileInput) return;
+  refs.audioDropZone.addEventListener("dragenter", onAudioDropZoneDragEnter);
+  refs.audioDropZone.addEventListener("dragover", onAudioDropZoneDragOver);
+  refs.audioDropZone.addEventListener("dragleave", onAudioDropZoneDragLeave);
+  refs.audioDropZone.addEventListener("drop", onAudioDropZoneDrop);
+  refs.audioDropZone.addEventListener("click", onAudioDropZoneClick);
+  refs.audioDropZone.addEventListener("keydown", onAudioDropZoneKeydown);
+  refs.audioFileInput.addEventListener("change", () => {
+    syncAudioDropHint();
+    const file = refs.audioFileInput.files && refs.audioFileInput.files[0];
+    if (file) refs.noticeText.textContent = `Loaded ${file.name}. Click Start Run to begin.`;
+  });
+  syncAudioDropHint();
+}
+
 async function callJson(url, payload) {
   const response = await fetch(url, {
     method: "POST",
@@ -407,5 +534,6 @@ refs.tabButtons.forEach((button) => {
 });
 window.addEventListener("resize", resizeResultOutputs);
 
+setupAudioDropZone();
 initialLoad();
 connectWebSocket();
