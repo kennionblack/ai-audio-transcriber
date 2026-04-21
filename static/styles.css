@@ -15,6 +15,7 @@
 
 html {
   font-size: 20px;
+  zoom: 90%;
 }
 
 * {
@@ -23,7 +24,7 @@ html {
 
 body {
   margin: 0;
-  padding: 0 1.1rem 0;
+  padding: 0;
   font-family: "Source Sans 3", "Segoe UI", sans-serif;
   color: var(--text);
   background: linear-gradient(180deg, #f7f9fc, var(--bg));
@@ -46,9 +47,6 @@ h3 {
 
 .site-header {
   margin-bottom: 0.9rem;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
   background: #002e5d;
   border-radius: 0;
   border: 0;
@@ -252,13 +250,11 @@ h3 {
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 0.95rem;
+  padding: 0 1.1rem;
 }
 
 .site-footer {
   margin-top: 0.95rem;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -524,30 +520,31 @@ button.primary {
 }
 
 .metric-grid {
-  margin-top: 0.65rem;
+  margin-top: 0.5rem;
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 0.48rem;
+  gap: 0.35rem;
 }
 
 .metric {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--surface-soft);
-  padding: 0.5rem 0.58rem;
+  padding: 0.32rem 0.42rem;
 }
 
 .metric .label {
   margin: 0;
   color: var(--muted);
-  font-size: 0.73rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
 .metric .value {
-  margin: 0.2rem 0 0;
-  font-size: 1.04rem;
+  margin: 0.12rem 0 0;
+  font-size: 0.88rem;
+  line-height: 1.15;
   font-weight: 700;
 }
 
@@ -769,8 +766,8 @@ button.primary {
 }
 
 @media (max-width: 680px) {
-  body {
-    padding: 0 0.7rem 0;
+  .layout {
+    padding: 0 0.7rem;
   }
 
   .site-header {
@@ -853,9 +850,6 @@ button.primary {
 
   .site-footer {
     margin-top: 0.75rem;
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
-    margin-right: calc(50% - 50vw);
     gap: 0.34rem;
     padding: 0.88rem 0.78rem 0.8rem;
   }
@@ -877,3 +871,4 @@ footer.site-footer .footer-links {
   color: #ffffff !important;
   text-align: center !important;
 }
+

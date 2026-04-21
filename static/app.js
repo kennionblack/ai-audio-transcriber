@@ -42,6 +42,8 @@ const refs = {
 let latestState = null;
 let socket = null;
 let connectionState = "connecting";
+let lastStateSignature = null;
+let lastRefreshAt = null;
 let latestArtifactUrls = {
   pdf: null,
   docx: null,
@@ -78,6 +80,29 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--";
   return date.toLocaleString();
+}
+
+function buildStateSignature(state) {
+  const timeline = Array.isArray(state.timeline) ? state.timeline : [];
+  const lastTimeline = timeline.length ? timeline[timeline.length - 1] : null;
+  return JSON.stringify({
+    status: state.status || "",
+    notice: state.notice || "",
+    started_at: state.started_at || "",
+    completed_at: state.completed_at || "",
+    active_audio_name: state.active_audio_name || "",
+    translate_lang: state.translate_lang || "",
+    output: state.output || "",
+    transcription_output: state.transcription_output || "",
+    summary_output: state.summary_output || "",
+    translations: state.translations || {},
+    translated_summaries: state.translated_summaries || {},
+    pdf_output: state.pdf_output || "",
+    export_files: state.export_files || {},
+    bundle_output: state.bundle_output || "",
+    log_tail: state.log_tail || "",
+    last_timeline: lastTimeline,
+  });
 }
 
 function countWords(text) {
@@ -221,6 +246,12 @@ function renderTimeline(items) {
 }
 
 function renderState(state) {
+  const signature = buildStateSignature(state);
+  if (signature !== lastStateSignature) {
+    lastStateSignature = signature;
+    lastRefreshAt = new Date();
+  }
+
   latestState = state;
   const display = buildDisplayState(state);
   const running = state.status === "Running";
@@ -243,7 +274,7 @@ function renderState(state) {
   refs.opsLanguage.textContent = display.viewName;
   refs.opsSourceFile.textContent = state.active_audio_name || "Not set";
   refs.opsLastUpdated.textContent = formatDateTime(state.completed_at || state.started_at);
-  refs.lastRefreshText.textContent = `Last refresh: ${new Date().toLocaleTimeString()}`;
+  refs.lastRefreshText.textContent = `Last refresh: ${lastRefreshAt ? lastRefreshAt.toLocaleTimeString() : "--"}`;
 
   setChecklistState(refs.checkInput, Boolean(state.active_audio_name));
   setChecklistState(refs.checkRun, running || String(state.status || "").startsWith("Completed"));
