@@ -1,0 +1,18 @@
+{
+    "tests": [
+        {
+            "score": 0,
+            "max_score": 0,
+            "name": "test_agents.py::test_format_final_package_valid",
+            "output": "\n",
+            "visibility": "visible"
+        },
+        {
+            "score": 0,
+            "max_score": 0,
+            "name": "test_agents.py::test_format_final_package_invalid_missing_summary",
+            "output": "\n",
+            "visibility": "visible"
+        }
+    ]
+}

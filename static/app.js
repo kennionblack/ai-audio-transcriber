@@ -55,7 +55,7 @@ const ARTIFACT_LABELS = {
   json: "JSON Package",
   bundle: "Bundle (ZIP)",
 };
-const ACCEPTED_AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".flac"]);
+const ACCEPTED_AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".flac", ".mp4"]);
 let audioDropDragDepth = 0;
 
 function getSelectedLanguage() {
@@ -273,7 +273,16 @@ function isAcceptedAudioFile(file) {
   if (ACCEPTED_AUDIO_EXTENSIONS.has(extension)) return true;
   if (extension) return false;
   const type = String(file.type || "").toLowerCase();
-  return ["audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac", "audio/x-flac", "audio/mp4", "audio/x-m4a"].includes(
+  return [
+    "audio/mpeg",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/flac",
+    "audio/x-flac",
+    "audio/mp4",
+    "audio/x-m4a",
+    "video/mp4",
+  ].includes(
     type
   );
 }
@@ -341,7 +350,7 @@ function onAudioDropZoneDrop(event) {
   if (!files.length) return;
   const file = files[0];
   if (!isAcceptedAudioFile(file)) {
-    refs.noticeText.textContent = "Unsupported file type. Use .mp3, .wav, .m4a, or .flac.";
+    refs.noticeText.textContent = "Unsupported file type. Use .mp3, .wav, .m4a, .flac, or .mp4.";
     return;
   }
   if (!assignAudioFile(file)) {

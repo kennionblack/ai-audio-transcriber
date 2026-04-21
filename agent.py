@@ -20,6 +20,7 @@ from tools.translation import SUPPORTED_LANGUAGES, parse_language, run_translati
 load_dotenv()
 
 VERBOSE = False
+SUPPORTED_AUDIO_SUFFIXES = (".mp3", ".wav", ".m4a", ".flac", ".mp4")
 
 def print_verbose(*args, **kwargs):
     """Print only when --verbose flag is set."""
@@ -163,8 +164,7 @@ def validate_audio_path(path: Path) -> bool:
     if not path.is_file():
         print(f"Error: Path '{path}' is not a file")
         return False
-    # We can decide the specific supported audio formats later but these seem like reasonable defaults
-    if path.suffix.lower() not in [".mp3", ".wav", ".m4a", ".flac"]:
+    if path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
         print(f"Error: Unsupported audio format '{path.suffix}'")
         return False
     return True

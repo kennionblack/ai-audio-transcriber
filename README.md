@@ -37,7 +37,7 @@ python3 agent.py [-h] [-v] [-t lang_code] path/to/audio/file
 | `-v` | Enable verbose/debug logging for each pipeline step |
 | `-t` | Translate output to a target language |
 
-Supported audio formats: `.mp3`, `.wav`, `.m4a`, `.flac`
+Supported audio formats: `.mp3`, `.wav`, `.m4a`, `.flac`, `.mp4`
 
 Supported translation languages: `en`, `zh`, `fr`, `es`, `de`, `ja`, `ko`, `pt`, `ar`, `ru`. Translation runs concurrently after the transcript and summary are ready, and writes a separate set of output files with a language suffix (e.g. `test_1_es.json`).
 

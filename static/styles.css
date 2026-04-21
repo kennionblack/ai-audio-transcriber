@@ -726,6 +726,11 @@ button.primary {
   font-size: 0.79rem;
 }
 
+#logOutput {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .lookup-row {
   display: flex;
   gap: 0.44rem;

@@ -29,7 +29,7 @@ BUNDLE_DIR = OUTPUT_DIR / "bundles"
 TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
-SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac"}
+SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".mp4"}
 IDLE_STATUS = "Idle"
 RUNNING_STATUS = "Running"
 COMPLETED_STATUS = "Completed"
