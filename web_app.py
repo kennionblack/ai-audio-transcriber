@@ -13,12 +13,12 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
+import uvicorn
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-import uvicorn
 
 from runtime_events import EVENT_PREFIX
 from tools.translation import SUPPORTED_LANGUAGES
@@ -301,7 +301,7 @@ def _reader_thread(process: subprocess.Popen) -> None:
                 log_file.write(stripped_line + "\n")
                 log_file.flush()
             if stripped_line.startswith(EVENT_PREFIX):
-                event_json = stripped_line[len(EVENT_PREFIX):].strip()
+                event_json = stripped_line[len(EVENT_PREFIX) :].strip()
                 try:
                     _handle_event(process, json.loads(event_json))
                 except json.JSONDecodeError:
@@ -487,16 +487,9 @@ async def lookup(payload: LookupPayload):
     with STATE_LOCK:
         if language_code:
             transcript = (
-                STATE["translations"].get(language_code)
-                or STATE["transcription_output"]
-                or STATE["output"]
-                or ""
+                STATE["translations"].get(language_code) or STATE["transcription_output"] or STATE["output"] or ""
             )
-            summary = (
-                STATE["translated_summaries"].get(language_code)
-                or STATE["summary_output"]
-                or ""
-            )
+            summary = STATE["translated_summaries"].get(language_code) or STATE["summary_output"] or ""
         else:
             transcript = STATE["transcription_output"] or STATE["output"] or ""
             summary = STATE["summary_output"] or ""

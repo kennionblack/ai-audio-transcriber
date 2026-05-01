@@ -223,26 +223,37 @@ function renderArtifactSelection(running) {
 }
 
 function renderTimeline(items) {
+  refs.timelineList.replaceChildren();
   if (!items || !items.length) {
-    refs.timelineList.innerHTML = "<li class='timeline-empty'>Start a run to populate timeline events.</li>";
+    const emptyItem = document.createElement("li");
+    emptyItem.className = "timeline-empty";
+    emptyItem.textContent = "Start a run to populate timeline events.";
+    refs.timelineList.append(emptyItem);
     return;
   }
-  refs.timelineList.innerHTML = items
+  const fragment = document.createDocumentFragment();
+  items
     .slice()
     .reverse()
-    .map((item) => {
-      const time = item.time || "--:--";
-      const label = item.label || "Event";
-      const detail = item.detail || "";
-      return `<li>
-        <span class="timeline-time">${time}</span>
-        <div>
-          <p class="timeline-label">${label}</p>
-          <p class="timeline-detail">${detail}</p>
-        </div>
-      </li>`;
-    })
-    .join("");
+    .forEach((item) => {
+      const listItem = document.createElement("li");
+      const time = document.createElement("span");
+      const content = document.createElement("div");
+      const label = document.createElement("p");
+      const detail = document.createElement("p");
+
+      time.className = "timeline-time";
+      time.textContent = item.time || "--:--";
+      label.className = "timeline-label";
+      label.textContent = item.label || "Event";
+      detail.className = "timeline-detail";
+      detail.textContent = item.detail || "";
+
+      content.append(label, detail);
+      listItem.append(time, content);
+      fragment.append(listItem);
+    });
+  refs.timelineList.append(fragment);
 }
 
 function renderState(state) {
