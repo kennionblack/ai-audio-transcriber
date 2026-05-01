@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+import uvicorn
 
 from runtime_events import EVENT_PREFIX
 from tools.translation import SUPPORTED_LANGUAGES
@@ -39,6 +41,21 @@ MAX_TIMELINE_ITEMS = 12
 MAX_LOOKUP_MATCHES_PER_SECTION = 6
 LOOKUP_CONTEXT_CHARS = 45
 LOG_TAIL_LINES = 150
+LOG_TAIL_CHUNK_SIZE = 8192
+UPLOAD_CHUNK_SIZE = 1024 * 1024
+STARTING_PROCESS = object()
+
+
+def _env_float(name: str, default: float, minimum: float) -> float:
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return max(value, minimum)
+
+
+WS_ACTIVE_INTERVAL_SECONDS = _env_float("VOXAI_WS_ACTIVE_INTERVAL_SECONDS", 0.7, 0.1)
+WS_IDLE_INTERVAL_SECONDS = _env_float("VOXAI_WS_IDLE_INTERVAL_SECONDS", 3.0, WS_ACTIVE_INTERVAL_SECONDS)
 
 app = FastAPI(title="VoxAI")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -102,6 +119,14 @@ def _reset_outputs_locked() -> None:
     STATE["active_audio_name"] = None
 
 
+def _process_is_active(process: object | None) -> bool:
+    if process is None:
+        return False
+    if process is STARTING_PROCESS:
+        return True
+    return process.poll() is None
+
+
 def _language_value_to_code(language_value: str | None) -> str | None:
     if not language_value:
         return None
@@ -143,10 +168,28 @@ def _read_log_tail(log_path: Path | None) -> str:
     if not log_path or not log_path.exists():
         return ""
     try:
-        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        chunks: list[bytes] = []
+        lines_found = 0
+        with log_path.open("rb") as log_file:
+            log_file.seek(0, 2)
+            position = log_file.tell()
+            while position > 0 and lines_found <= LOG_TAIL_LINES:
+                read_size = min(LOG_TAIL_CHUNK_SIZE, position)
+                position -= read_size
+                log_file.seek(position)
+                chunk = log_file.read(read_size)
+                chunks.append(chunk)
+                lines_found += chunk.count(b"\n")
     except OSError:
         return ""
+    lines = b"".join(reversed(chunks)).decode("utf-8", errors="replace").splitlines()
     return "\n".join(lines[-LOG_TAIL_LINES:])
+
+
+async def _save_upload_file(upload_file: UploadFile, destination: Path) -> None:
+    with destination.open("wb") as output_file:
+        while chunk := await upload_file.read(UPLOAD_CHUNK_SIZE):
+            await asyncio.to_thread(output_file.write, chunk)
 
 
 def _snapshot_state() -> dict:
@@ -172,6 +215,12 @@ def _snapshot_state() -> dict:
     snapshot["log_tail"] = _read_log_tail(log_path)
     snapshot["supported_languages"] = SUPPORTED_LANGUAGES
     return snapshot
+
+
+def _websocket_interval(snapshot: dict) -> float:
+    if snapshot.get("status") == RUNNING_STATUS:
+        return WS_ACTIVE_INTERVAL_SECONDS
+    return WS_IDLE_INTERVAL_SECONDS
 
 
 def _handle_event(process: subprocess.Popen, payload: dict) -> None:
@@ -266,6 +315,8 @@ def _reader_thread(process: subprocess.Popen) -> None:
             log_file.close()
     return_code = process.wait()
     with STATE_LOCK:
+        if STATE["process"] is not process:
+            return
         STATE["process"] = None
         if STATE["status"] == COMPLETED_STATUS:
             if not STATE["output"]:
@@ -288,6 +339,9 @@ def _reader_thread(process: subprocess.Popen) -> None:
 
 def _terminate_process_locked() -> None:
     process = STATE["process"]
+    if process is STARTING_PROCESS:
+        STATE["process"] = None
+        return
     if process is not None and process.poll() is None:
         process.terminate()
         try:
@@ -331,8 +385,9 @@ async def websocket_state(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            await websocket.send_json(_snapshot_state())
-            await asyncio.sleep(0.7)
+            snapshot = _snapshot_state()
+            await websocket.send_json(snapshot)
+            await asyncio.sleep(_websocket_interval(snapshot))
     except WebSocketDisconnect:
         return
 
@@ -347,37 +402,65 @@ async def transcribe(audio_file: UploadFile = File(...), language: str | None = 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{Path(audio_file.filename or 'audio').name}"
     upload_path = UPLOAD_DIR / safe_name
-    data = await audio_file.read()
-    upload_path.write_bytes(data)
+    try:
+        await _save_upload_file(audio_file, upload_path)
+    except OSError as exc:
+        upload_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded audio.") from exc
+    translate_lang = _language_value_to_code(language)
 
     with STATE_LOCK:
         existing = STATE["process"]
-        if existing is not None and existing.poll() is None:
+        if _process_is_active(existing):
             raise HTTPException(status_code=409, detail="A transcription is already running.")
-
-    command = [sys.executable, "agent.py", "-v", "--mode", "auto", str(upload_path)]
-    translate_lang = _language_value_to_code(language)
-    if translate_lang:
-        command.extend(["--translate", translate_lang])
-    process = subprocess.Popen(
-        command,
-        cwd=BASE_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-
-    with STATE_LOCK:
         _reset_outputs_locked()
-        STATE["process"] = process
+        STATE["process"] = STARTING_PROCESS
         STATE["status"] = RUNNING_STATUS
         STATE["translate_lang"] = translate_lang
         STATE["started_at"] = datetime.now()
-        STATE["notice"] = "Run started. Streaming updates."
+        STATE["notice"] = "Run starting."
         STATE["log_path"] = LOG_DIR / f"transcription-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
         STATE["active_audio_name"] = upload_path.name
-        _append_timeline_locked("Run started", upload_path.name)
+        _append_timeline_locked("Run starting", upload_path.name)
+
+    command = [sys.executable, "agent.py", "-v", "--mode", "auto", str(upload_path)]
+    if translate_lang:
+        command.extend(["--translate", translate_lang])
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except OSError as exc:
+        with STATE_LOCK:
+            if STATE["process"] is STARTING_PROCESS:
+                STATE["process"] = None
+                STATE["status"] = f"Failed to start: {exc}"
+                STATE["notice"] = "Run failed to start."
+                STATE["completed_at"] = datetime.now()
+                _append_timeline_locked("Run failed to start", str(exc))
+        raise HTTPException(status_code=500, detail="Failed to start transcription process.") from exc
+
+    start_cancelled = False
+    with STATE_LOCK:
+        if STATE["process"] is not STARTING_PROCESS:
+            start_cancelled = True
+        else:
+            STATE["process"] = process
+            STATE["notice"] = "Run started. Streaming updates."
+            _append_timeline_locked("Run started", upload_path.name)
+    if start_cancelled:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+        raise HTTPException(status_code=409, detail="Transcription start was cancelled.")
 
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
     return JSONResponse(_snapshot_state())
@@ -571,6 +654,4 @@ async def startup_event():
 
 
 if __name__ == "__main__":
-    import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=7860)
