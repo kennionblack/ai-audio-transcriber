@@ -13,3 +13,4 @@ logs/*
 
 .pytest_cache
 .vscode/
+results.json
