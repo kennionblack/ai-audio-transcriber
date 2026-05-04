@@ -12,6 +12,7 @@ from tools.exporters import write_outputs
 # This allows us to set our own output directory in an env var if desired
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "output"))
 
+
 def _validate_transcript(value: str) -> list[str] | None:
     # only checking if string is empty here, we can extend this later if we define a more specific transcript format
     errors = []
@@ -35,6 +36,7 @@ def _validate_summary(bullets: list[str], min_bullets: int, max_bullets: int) ->
     if len(bullets) > max_bullets:
         errors.append(f"summary has {len(bullets)} bullet(s), maximum is {max_bullets}")
     return errors or None
+
 
 @dataclass
 class TranscriptContext:
@@ -193,10 +195,13 @@ class TranscriptContext:
     def snapshot_json(self) -> str:
         return json.dumps(self.snapshot(), ensure_ascii=False)
 
+
 _instance: TranscriptContext = TranscriptContext()
+
 
 def get_context() -> TranscriptContext:
     return _instance
+
 
 def _reset_context(**kwargs) -> TranscriptContext:
     """Reset singleton with an empty context for testing"""

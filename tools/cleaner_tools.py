@@ -57,5 +57,3 @@ def set_summary(bullets_json: str, n_bullets: Optional[int]) -> str:
 def get_context_snapshot() -> str:
     """Return the full shared context (raw transcript, cleaned transcript, summary, metadata) as JSON."""
     return get_context().snapshot_json()
-
-

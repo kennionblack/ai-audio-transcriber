@@ -35,8 +35,7 @@ def parse_language(raw: str) -> str:
     if code not in SUPPORTED_LANGUAGES:
         supported = ", ".join(f"{k} ({v})" for k, v in SUPPORTED_LANGUAGES.items())
         print(
-            f"Error: unsupported language '{code}'\n"
-            f"Supported: {supported}",
+            f"Error: unsupported language '{code}'\nSupported: {supported}",
         )
         sys.exit(1)
 
@@ -88,9 +87,7 @@ async def _translate_to_language(
     translated = await translate_text(transcript, lang)
 
     # Concurrently translate each bullet point to avoid api call bottleneck when lots of bullet points are present
-    translated_summary = await asyncio.gather(
-        *(translate_text(bullet, lang) for bullet in summary)
-    )
+    translated_summary = await asyncio.gather(*(translate_text(bullet, lang) for bullet in summary))
 
     ctx = get_context()
     ctx.set_translation(lang, translated)

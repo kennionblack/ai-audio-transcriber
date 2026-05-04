@@ -33,7 +33,6 @@ _PDF_FONT_TTF_CJK = "TranscriberCJK"
 _PDF_FONT_TTF_CJK_BOLD = "TranscriberCJKBold"
 
 
-
 # This function takes the cleaned transcript, summary, and metadata, and writes them to JSON,
 # DOCX, and PDF files in the specified output directory. It returns a dictionary with the paths
 # to each of the generated files.
@@ -109,7 +108,6 @@ def _write_docx(path: Path, content: dict[str, Any]) -> None:
         document.add_paragraph(f"Source Audio: {content['audio_filename']}")
     document.add_paragraph(f"Generated: {content['generated_at']}")
 
-
     document.add_heading("Summary", level=2)
     summary: list[str] = content["summary"]
     if summary:
@@ -130,6 +128,7 @@ def _write_docx(path: Path, content: dict[str, Any]) -> None:
 # metadata,
 # summary, and
 # transcript.
+
 
 def _write_pdf(path: Path, content: dict[str, Any]) -> None:
     body_font, heading_font = _resolve_pdf_fonts(content)

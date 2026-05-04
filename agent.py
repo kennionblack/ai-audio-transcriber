@@ -22,14 +22,17 @@ load_dotenv()
 VERBOSE = False
 SUPPORTED_AUDIO_SUFFIXES = (".mp3", ".wav", ".m4a", ".flac", ".mp4")
 
+
 def print_verbose(*args, **kwargs):
     """Print only when --verbose flag is set."""
     if VERBOSE:
         print(*args, **kwargs, flush=True)
 
+
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 tool_box = ToolBox()
 ctx = get_context()
+
 
 def _format_final_package(message: str) -> str | None:
     """Return final user-facing text when `message` is a completed package."""
@@ -77,14 +80,17 @@ def _build_final_payload(result: str) -> dict[str, object]:
         "summary": "",
     }
 
+
 async def get_transcript() -> str:
     """Retrieve the raw transcript. Blocks until transcription is complete, then stores it in the shared context."""
     transcript = await tool_box.get_transcript()
     ctx.set_raw_transcript(transcript)
     return transcript
 
+
 tool_box.tool(get_transcript)
 tools.register_all_tools(tool_box)
+
 
 def add_agent_tools(agents: dict[str, Agent], tool_box: ToolBox):
     def make_agent_tool(agent: Agent):
@@ -157,6 +163,7 @@ async def run_agent(agent: Agent, tool_box: ToolBox, message: str | None):
             else:
                 print_verbose(item, file=sys.stderr)
 
+
 def validate_audio_path(path: Path) -> bool:
     if not path.exists():
         print(f"Error: Path '{path}' does not exist")
@@ -169,11 +176,13 @@ def validate_audio_path(path: Path) -> bool:
         return False
     return True
 
+
 def _run_transcription(audio_path: str) -> str:
     """Wrapper function for transcription that runs on separate thread"""
     transcript = load_audio_file(audio_path)
     print_verbose("---- TRANSCRIPTION COMPLETE ----\n")
     return transcript
+
 
 async def async_main(audio_path: Path, translate_lang: str | None = None, mode: str = "interactive"):
     tool_box.set_audio_path(str(audio_path))
@@ -181,36 +190,39 @@ async def async_main(audio_path: Path, translate_lang: str | None = None, mode: 
 
     # This allows the transcription to run in the background while the agent initializes and calls its own tools.
     # This also allows the user to interact with the coordinator while the transcript is processed concurrently
-    transcription_task = asyncio.create_task(
-        asyncio.to_thread(_run_transcription, str(audio_path))
-    )
+    transcription_task = asyncio.create_task(asyncio.to_thread(_run_transcription, str(audio_path)))
     tool_box.set_transcription_task(transcription_task)
 
     # If we have a translation language specified, set callback for translation
     # Callback invoked in the _on_complete hook in context.py after transcript and summary exist
     translation_task = None
     if translate_lang:
+
         def _start_translation(stem: str):
             nonlocal translation_task
-            translation_task = asyncio.ensure_future(run_translation(
-                language=translate_lang,
-                output_dir=OUTPUT_DIR,
-                stem=stem,
-            ))
+            translation_task = asyncio.ensure_future(
+                run_translation(
+                    language=translate_lang,
+                    output_dir=OUTPUT_DIR,
+                    stem=stem,
+                )
+            )
+
         ctx.on_translation_ready = _start_translation
 
     config = load_config(Path("agents.yaml"))
     agents = {agent["name"]: agent for agent in config["agents"]}
     add_agent_tools(agents, tool_box)
     if mode == "auto":
-        main_agent=config.get("automated", config["main"])
+        main_agent = config.get("automated", config["main"])
     else:
-        main_agent=config["main"]
+        main_agent = config["main"]
     result = await run_agent(agents[main_agent], tool_box, None)
     emit_event("final_result", **_build_final_payload(result))
 
     if translation_task:
         await translation_task
+
 
 def main(audio_path: Path, translate_lang: str | None = None, mode: str = "interactive"):
     if not validate_audio_path(audio_path):
@@ -226,15 +238,14 @@ if __name__ == "__main__":
     parser.add_argument("audio_file_path", type=Path, help="Path to the audio file to process")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging output")
     parser.add_argument(
-        "--translate", "-t",
+        "--translate",
+        "-t",
         metavar="lang_code",
-        help=(
-            "Target language code for translation. "
-            f"Supported: {', '.join(SUPPORTED_LANGUAGES)}"
-        ),
+        help=(f"Target language code for translation. Supported: {', '.join(SUPPORTED_LANGUAGES)}"),
     )
     parser.add_argument(
-        "--mode", "-m",
+        "--mode",
+        "-m",
         choices=["interactive", "auto"],
         default="interactive",
         help="Agent execution mode (default: interactive)",

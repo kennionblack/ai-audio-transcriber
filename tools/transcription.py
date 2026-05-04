@@ -15,9 +15,7 @@ _MODEL: WhisperModel | None = None
 def _get_model() -> WhisperModel:
     global _MODEL
     if _MODEL is None:
-        print_verbose(
-            f"[transcription] loading whisper model {MODEL_NAME!r} on {DEVICE}/{COMPUTE_TYPE}"
-        )
+        print_verbose(f"[transcription] loading whisper model {MODEL_NAME!r} on {DEVICE}/{COMPUTE_TYPE}")
         _MODEL = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
     return _MODEL
 
@@ -38,7 +36,6 @@ def load_audio_file(file_path: str) -> str:
         for segment in segments:
             text = segment.text.strip()
             full_transcript.append(text)
-
 
         return " ".join(full_transcript)
 
