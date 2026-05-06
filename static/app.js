@@ -11,8 +11,13 @@ const refs = {
   showUploadsBtn: document.getElementById("showUploadsBtn"),
   uploadManagerPanel: document.getElementById("uploadManagerPanel"),
   refreshUploadsBtn: document.getElementById("refreshUploadsBtn"),
+  closeUploadManagerBtn: document.getElementById("closeUploadManagerBtn"),
   selectAllUploads: document.getElementById("selectAllUploads"),
   deleteUploadsBtn: document.getElementById("deleteUploadsBtn"),
+  deleteConfirmPopup: document.getElementById("deleteConfirmPopup"),
+  deleteConfirmMessage: document.getElementById("deleteConfirmMessage"),
+  cancelDeleteUploadsBtn: document.getElementById("cancelDeleteUploadsBtn"),
+  confirmDeleteUploadsBtn: document.getElementById("confirmDeleteUploadsBtn"),
   uploadedFilesList: document.getElementById("uploadedFilesList"),
   artifactSelect: document.getElementById("artifactSelect"),
   artifactStatus: document.getElementById("artifactStatus"),
@@ -52,6 +57,7 @@ let lastStateSignature = null;
 let lastRefreshAt = null;
 let uploadedFiles = [];
 let selectedUploadName = null;
+let pendingDeleteNames = [];
 let latestArtifactUrls = {
   pdf: null,
   docx: null,
@@ -139,8 +145,9 @@ function countBullets(text) {
 function getRunControlNotice(state) {
   const status = String((state && state.status) || "");
   if (status === "Idle" || !status) {
-    if (selectedUploadName) return "Ready. file selected";
-    if (refs.audioFileInput.files && refs.audioFileInput.files[0]) return "Ready. file uploaded";
+    const selectedFile = refs.audioFileInput.files && refs.audioFileInput.files[0];
+    if (selectedUploadName) return `${selectedUploadName} Ready. File Selected`;
+    if (selectedFile) return `${selectedFile.name} Ready. File Uploaded`;
   }
   return (state && state.notice) || "Ready.";
 }
@@ -323,7 +330,7 @@ function selectUploadedFile(fileName) {
   refs.audioFileInput.value = "";
   syncAudioDropHint();
   syncUploadedFileActions();
-  refs.noticeText.textContent = ` ${selectedUploadName} Ready. file Selected`;
+  refs.noticeText.textContent = `${selectedUploadName} Ready. File Selected`;
 }
 
 function renderUploadedFiles(files) {
@@ -528,7 +535,7 @@ function onAudioDropZoneDrop(event) {
     refs.noticeText.textContent = "Drop detected, but file assignment was blocked. Use Choose File.";
     return;
   }
-  refs.noticeText.textContent = `${file.name} Ready. file uploaded`;
+  refs.noticeText.textContent = `${file.name} Ready. File Uploaded`;
 }
 
 function onAudioDropZoneClick(event) {
@@ -560,7 +567,7 @@ function setupAudioDropZone() {
     if (file) {
       selectedUploadName = null;
       syncUploadedFileActions();
-      refs.noticeText.textContent = `${file.name} Ready. file uploaded`;
+      refs.noticeText.textContent = `${file.name} Ready. File Uploaded`;
     }
     syncAudioDropHint();
   });
@@ -597,15 +604,45 @@ async function loadUploads() {
 }
 
 async function toggleUploadManager() {
-  const nextHidden = !refs.uploadManagerPanel.hidden;
-  refs.uploadManagerPanel.hidden = nextHidden;
-  refs.showUploadsBtn.textContent = nextHidden ? "Manage uploaded files" : "Hide uploaded files";
-  if (!nextHidden) await loadUploads();
+  if (refs.uploadManagerPanel.hidden) {
+    refs.uploadManagerPanel.hidden = false;
+    refs.showUploadsBtn.textContent = "Hide uploaded files";
+    await loadUploads();
+    refs.refreshUploadsBtn.focus();
+  } else {
+    closeUploadManager();
+  }
+}
+
+function closeUploadManager() {
+  hideDeleteConfirmPopup();
+  refs.uploadManagerPanel.hidden = true;
+  refs.showUploadsBtn.textContent = "Manage uploaded files";
+  refs.showUploadsBtn.focus();
+}
+
+function showDeleteConfirmPopup(fileNames) {
+  pendingDeleteNames = fileNames;
+  refs.deleteConfirmMessage.textContent = `Delete ${fileNames.length} selected uploaded file(s)? This cannot be undone.`;
+  refs.deleteConfirmPopup.hidden = false;
+  refs.confirmDeleteUploadsBtn.focus();
+}
+
+function hideDeleteConfirmPopup() {
+  pendingDeleteNames = [];
+  refs.deleteConfirmPopup.hidden = true;
+}
+
+function requestDeleteSelectedUploads() {
+  const fileNames = getSelectedUploadNames();
+  if (!fileNames.length) return;
+  showDeleteConfirmPopup(fileNames);
 }
 
 async function deleteSelectedUploads() {
-  const fileNames = getSelectedUploadNames();
+  const fileNames = pendingDeleteNames.slice();
   if (!fileNames.length) return;
+  hideDeleteConfirmPopup();
   try {
     const data = await callJson("/api/uploads/delete", { file_names: fileNames });
     if (selectedUploadName && fileNames.includes(selectedUploadName)) {
@@ -750,6 +787,7 @@ refs.runForm.addEventListener("submit", submitRun);
 refs.clearBtn.addEventListener("click", clearRun);
 refs.bundleBtn.addEventListener("click", buildBundle);
 refs.showUploadsBtn.addEventListener("click", toggleUploadManager);
+refs.closeUploadManagerBtn.addEventListener("click", closeUploadManager);
 refs.selectAllUploads.addEventListener("change", () => {
   refs.uploadedFilesList.querySelectorAll(".upload-select").forEach((input) => {
     input.checked = refs.selectAllUploads.checked;
@@ -781,6 +819,11 @@ refs.uploadedFilesList.addEventListener("click", (event) => {
 });
 refs.uploadManagerPanel.addEventListener("click", (event) => {
   if (!(event.target instanceof Element)) return;
+  if (event.target === refs.uploadManagerPanel) {
+    closeUploadManager();
+    return;
+  }
+
   const refreshButton = event.target.closest("#refreshUploadsBtn");
   if (refreshButton) {
     event.preventDefault();
@@ -791,10 +834,21 @@ refs.uploadManagerPanel.addEventListener("click", (event) => {
   const deleteButton = event.target.closest("#deleteUploadsBtn");
   if (deleteButton && !refs.deleteUploadsBtn.disabled) {
     event.preventDefault();
-    deleteSelectedUploads();
+    requestDeleteSelectedUploads();
   }
 });
+refs.cancelDeleteUploadsBtn.addEventListener("click", hideDeleteConfirmPopup);
+refs.confirmDeleteUploadsBtn.addEventListener("click", deleteSelectedUploads);
 refs.lookupBtn.addEventListener("click", runLookup);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !refs.deleteConfirmPopup.hidden) {
+    hideDeleteConfirmPopup();
+    return;
+  }
+  if (event.key === "Escape" && !refs.uploadManagerPanel.hidden) {
+    closeUploadManager();
+  }
+});
 refs.lookupInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
