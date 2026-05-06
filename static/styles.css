@@ -295,6 +295,7 @@ h3 {
 .operations,
 .monitor,
 .artifacts,
+.upload-manager,
 .platform-meta,
 .results {
   padding: 0.92rem;
@@ -304,6 +305,7 @@ h3 {
 .operations h2,
 .monitor h2,
 .artifacts h2,
+.upload-manager h2,
 .results h2 {
   font-size: 1.1rem;
 }
@@ -442,6 +444,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 button.primary {
   border: 0;
   background: linear-gradient(120deg, #2048b9, #246ede);
@@ -452,6 +459,102 @@ button.primary {
   padding: 0.315rem 0.399rem;
   font-size: 0.63rem;
   border-radius: 5.25px;
+}
+
+.link-button {
+  margin-top: 0.52rem;
+  border: 1px solid #c7d7f2;
+  border-radius: 8px;
+  background: #f3f7ff;
+  color: var(--primary);
+  padding: 0.34rem 0.58rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  width: 100%;
+}
+
+.panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.panel-title-row button,
+.upload-actions button {
+  padding: 0.32rem 0.58rem;
+  font-size: 0.67rem;
+  border-radius: 8px;
+}
+
+.upload-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.select-all-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.select-all-row input,
+.upload-file-row input {
+  width: auto;
+}
+
+.uploaded-files-list {
+  margin-top: 0.5rem;
+  display: grid;
+  gap: 0.42rem;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.upload-file-row {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fbfdff;
+  padding: 0.44rem;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.upload-file-row input {
+  cursor: pointer;
+}
+
+.upload-file-row.selected {
+  border-color: #8fb0e8;
+  background: #edf4ff;
+}
+
+.upload-file-name {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.upload-file-meta,
+.upload-empty {
+  margin: 0.12rem 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.upload-file-row button {
+  padding: 0.28rem 0.5rem;
+  font-size: 0.65rem;
+  border-radius: 7px;
 }
 
 .ops-grid {

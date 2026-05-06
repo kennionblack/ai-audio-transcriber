@@ -8,6 +8,12 @@ const refs = {
   languageSelect: document.getElementById("languageSelect"),
   clearBtn: document.getElementById("clearBtn"),
   bundleBtn: document.getElementById("bundleBtn"),
+  showUploadsBtn: document.getElementById("showUploadsBtn"),
+  uploadManagerPanel: document.getElementById("uploadManagerPanel"),
+  refreshUploadsBtn: document.getElementById("refreshUploadsBtn"),
+  selectAllUploads: document.getElementById("selectAllUploads"),
+  deleteUploadsBtn: document.getElementById("deleteUploadsBtn"),
+  uploadedFilesList: document.getElementById("uploadedFilesList"),
   artifactSelect: document.getElementById("artifactSelect"),
   artifactStatus: document.getElementById("artifactStatus"),
   artifactDownloadLink: document.getElementById("artifactDownloadLink"),
@@ -44,6 +50,8 @@ let socket = null;
 let connectionState = "connecting";
 let lastStateSignature = null;
 let lastRefreshAt = null;
+let uploadedFiles = [];
+let selectedUploadName = null;
 let latestArtifactUrls = {
   pdf: null,
   docx: null,
@@ -82,6 +90,19 @@ function formatDateTime(value) {
   return date.toLocaleString();
 }
 
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let size = bytes / 1024;
+  let unitIndex = 0;
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
 function buildStateSignature(state) {
   const timeline = Array.isArray(state.timeline) ? state.timeline : [];
   const lastTimeline = timeline.length ? timeline[timeline.length - 1] : null;
@@ -113,6 +134,15 @@ function countWords(text) {
 function countBullets(text) {
   if (!text) return 0;
   return text.split("\n").filter((line) => line.trim().startsWith("-")).length;
+}
+
+function getRunControlNotice(state) {
+  const status = String((state && state.status) || "");
+  if (status === "Idle" || !status) {
+    if (selectedUploadName) return "Ready. file selected";
+    if (refs.audioFileInput.files && refs.audioFileInput.files[0]) return "Ready. file uploaded";
+  }
+  return (state && state.notice) || "Ready.";
 }
 
 function setStatusBadge(status) {
@@ -256,6 +286,99 @@ function renderTimeline(items) {
   refs.timelineList.append(fragment);
 }
 
+function getSelectedUploadNames() {
+  return Array.from(refs.uploadedFilesList.querySelectorAll(".upload-select:checked")).map((input) => input.value);
+}
+
+function syncUploadSelectionState() {
+  const checkboxes = Array.from(refs.uploadedFilesList.querySelectorAll(".upload-select"));
+  const selectedCount = checkboxes.filter((input) => input.checked).length;
+  refs.deleteUploadsBtn.disabled = selectedCount === 0;
+  refs.deleteUploadsBtn.setAttribute("aria-disabled", selectedCount === 0 ? "true" : "false");
+  refs.selectAllUploads.disabled = checkboxes.length === 0;
+  refs.selectAllUploads.checked = checkboxes.length > 0 && selectedCount === checkboxes.length;
+  refs.selectAllUploads.indeterminate = selectedCount > 0 && selectedCount < checkboxes.length;
+}
+
+function syncUploadedFileActions() {
+  const running = latestState && latestState.status === "Running";
+  refs.uploadedFilesList.querySelectorAll(".upload-file-row").forEach((row) => {
+    row.classList.toggle("selected", row.dataset.fileName === selectedUploadName);
+  });
+  refs.uploadedFilesList.querySelectorAll("[data-action='select-upload']").forEach((button) => {
+    button.disabled = Boolean(running);
+    button.textContent = button.dataset.fileName === selectedUploadName ? "Selected" : "Use";
+  });
+}
+
+function clearSelectedUpload() {
+  selectedUploadName = null;
+  syncAudioDropHint();
+  syncUploadedFileActions();
+}
+
+function selectUploadedFile(fileName) {
+  if (!fileName) return;
+  selectedUploadName = fileName;
+  refs.audioFileInput.value = "";
+  syncAudioDropHint();
+  syncUploadedFileActions();
+  refs.noticeText.textContent = ` ${selectedUploadName} Ready. file Selected`;
+}
+
+function renderUploadedFiles(files) {
+  uploadedFiles = Array.isArray(files) ? files : [];
+  if (selectedUploadName && !uploadedFiles.some((file) => file.name === selectedUploadName)) {
+    selectedUploadName = null;
+    syncAudioDropHint();
+  }
+  refs.uploadedFilesList.replaceChildren();
+  if (!uploadedFiles.length) {
+    const empty = document.createElement("p");
+    empty.className = "upload-empty";
+    empty.textContent = "No uploaded files found.";
+    refs.uploadedFilesList.append(empty);
+    syncUploadSelectionState();
+    return;
+  }
+
+  const running = latestState && latestState.status === "Running";
+  const fragment = document.createDocumentFragment();
+  uploadedFiles.forEach((file) => {
+    const row = document.createElement("article");
+    const checkbox = document.createElement("input");
+    const details = document.createElement("div");
+    const name = document.createElement("p");
+    const meta = document.createElement("p");
+    const useButton = document.createElement("button");
+
+    row.className = "upload-file-row";
+    row.dataset.fileName = file.name || "";
+    checkbox.className = "upload-select";
+    checkbox.type = "checkbox";
+    checkbox.value = file.name || "";
+    checkbox.setAttribute("aria-label", `Select ${file.name || "uploaded file"}`);
+
+    name.className = "upload-file-name";
+    name.textContent = file.name || "Unnamed upload";
+    meta.className = "upload-file-meta";
+    meta.textContent = `${formatBytes(file.size)} | ${formatDateTime(file.modified_at)}`;
+
+    useButton.type = "button";
+    useButton.dataset.action = "select-upload";
+    useButton.dataset.fileName = file.name || "";
+    useButton.textContent = "Use";
+    useButton.disabled = Boolean(running);
+
+    details.append(name, meta);
+    row.append(checkbox, details, useButton);
+    fragment.append(row);
+  });
+  refs.uploadedFilesList.append(fragment);
+  syncUploadSelectionState();
+  syncUploadedFileActions();
+}
+
 function renderState(state) {
   const signature = buildStateSignature(state);
   if (signature !== lastStateSignature) {
@@ -269,7 +392,7 @@ function renderState(state) {
   const hasExports = Object.keys(state.export_files || {}).length > 0;
 
   setStatusBadge(state.status || "Idle");
-  refs.noticeText.textContent = state.notice || "Ready.";
+  refs.noticeText.textContent = getRunControlNotice(state);
   refs.transcriptOutput.value = display.transcript || "";
   refs.summaryOutput.value = display.summary || "";
   resizeResultOutputs();
@@ -300,6 +423,7 @@ function renderState(state) {
   renderArtifactSelection(running);
 
   renderTimeline(state.timeline || []);
+  syncUploadedFileActions();
 }
 
 function getFileExtension(name) {
@@ -342,6 +466,10 @@ function setAudioDropDragging(active) {
 function syncAudioDropHint() {
   if (!refs.audioDropHint) return;
   const file = refs.audioFileInput.files && refs.audioFileInput.files[0];
+  if (selectedUploadName) {
+    refs.audioDropHint.textContent = `Selected uploaded file: ${selectedUploadName}`;
+    return;
+  }
   refs.audioDropHint.textContent = file ? `Selected file: ${file.name}` : "Or drag and drop an audio file here.";
 }
 
@@ -352,6 +480,7 @@ function assignAudioFile(file) {
       const transfer = new DataTransfer();
       transfer.items.add(file);
       refs.audioFileInput.files = transfer.files;
+      selectedUploadName = null;
     } else {
       return false;
     }
@@ -399,7 +528,7 @@ function onAudioDropZoneDrop(event) {
     refs.noticeText.textContent = "Drop detected, but file assignment was blocked. Use Choose File.";
     return;
   }
-  refs.noticeText.textContent = `Loaded ${file.name}. Click Start Run to begin.`;
+  refs.noticeText.textContent = `${file.name} Ready. file uploaded`;
 }
 
 function onAudioDropZoneClick(event) {
@@ -427,9 +556,13 @@ function setupAudioDropZone() {
   refs.audioDropZone.addEventListener("click", onAudioDropZoneClick);
   refs.audioDropZone.addEventListener("keydown", onAudioDropZoneKeydown);
   refs.audioFileInput.addEventListener("change", () => {
-    syncAudioDropHint();
     const file = refs.audioFileInput.files && refs.audioFileInput.files[0];
-    if (file) refs.noticeText.textContent = `Loaded ${file.name}. Click Start Run to begin.`;
+    if (file) {
+      selectedUploadName = null;
+      syncUploadedFileActions();
+      refs.noticeText.textContent = `${file.name} Ready. file uploaded`;
+    }
+    syncAudioDropHint();
   });
   syncAudioDropHint();
 }
@@ -447,27 +580,76 @@ async function callJson(url, payload) {
   return response.json();
 }
 
+async function loadUploads() {
+  try {
+    refs.noticeText.textContent = "Refreshing uploaded files.";
+    const response = await fetch("/api/uploads");
+    if (!response.ok) {
+      const details = await response.json().catch(() => ({}));
+      throw new Error(details.detail || `Request failed (${response.status})`);
+    }
+    const data = await response.json();
+    renderUploadedFiles(data.files || []);
+    refs.noticeText.textContent = `Loaded ${(data.files || []).length} uploaded file(s).`;
+  } catch (error) {
+    refs.noticeText.textContent = String(error.message || error);
+  }
+}
+
+async function toggleUploadManager() {
+  const nextHidden = !refs.uploadManagerPanel.hidden;
+  refs.uploadManagerPanel.hidden = nextHidden;
+  refs.showUploadsBtn.textContent = nextHidden ? "Manage uploaded files" : "Hide uploaded files";
+  if (!nextHidden) await loadUploads();
+}
+
+async function deleteSelectedUploads() {
+  const fileNames = getSelectedUploadNames();
+  if (!fileNames.length) return;
+  try {
+    const data = await callJson("/api/uploads/delete", { file_names: fileNames });
+    if (selectedUploadName && fileNames.includes(selectedUploadName)) {
+      selectedUploadName = null;
+      syncAudioDropHint();
+    }
+    renderUploadedFiles(data.files || []);
+    refs.noticeText.textContent = data.deleted && data.deleted.length ? `Deleted ${data.deleted.length} upload(s).` : "No uploads deleted.";
+    if (latestState && data.deleted && data.deleted.includes(latestState.active_audio_name)) {
+      latestState.active_audio_name = null;
+      renderState(latestState);
+    }
+  } catch (error) {
+    refs.noticeText.textContent = String(error.message || error);
+  }
+}
+
 async function submitRun(event) {
   event.preventDefault();
   const file = refs.audioFileInput.files[0];
-  if (!file) {
+  if (!file && !selectedUploadName) {
     refs.noticeText.textContent = "Select an audio file first.";
     return;
   }
 
   const language = getSelectedLanguage();
-  const data = new FormData();
-  data.append("audio_file", file);
-  if (language) data.append("language", language);
 
   try {
-    const response = await fetch("/api/transcribe", { method: "POST", body: data });
-    if (!response.ok) {
-      const details = await response.json().catch(() => ({}));
-      throw new Error(details.detail || `Request failed (${response.status})`);
+    let state;
+    if (selectedUploadName) {
+      state = await callJson("/api/transcribe-existing", { file_name: selectedUploadName, language });
+    } else {
+      const data = new FormData();
+      data.append("audio_file", file);
+      if (language) data.append("language", language);
+      const response = await fetch("/api/transcribe", { method: "POST", body: data });
+      if (!response.ok) {
+        const details = await response.json().catch(() => ({}));
+        throw new Error(details.detail || `Request failed (${response.status})`);
+      }
+      state = await response.json();
     }
-    const state = await response.json();
     renderState(state);
+    if (!refs.uploadManagerPanel.hidden) await loadUploads();
   } catch (error) {
     refs.noticeText.textContent = String(error.message || error);
   }
@@ -476,6 +658,8 @@ async function submitRun(event) {
 async function clearRun() {
   try {
     const state = await callJson("/api/clear", {});
+    clearSelectedUpload();
+    refs.audioFileInput.value = "";
     refs.lookupOutput.textContent = "";
     renderState(state);
   } catch (error) {
@@ -565,6 +749,51 @@ async function initialLoad() {
 refs.runForm.addEventListener("submit", submitRun);
 refs.clearBtn.addEventListener("click", clearRun);
 refs.bundleBtn.addEventListener("click", buildBundle);
+refs.showUploadsBtn.addEventListener("click", toggleUploadManager);
+refs.selectAllUploads.addEventListener("change", () => {
+  refs.uploadedFilesList.querySelectorAll(".upload-select").forEach((input) => {
+    input.checked = refs.selectAllUploads.checked;
+  });
+  syncUploadSelectionState();
+});
+refs.uploadedFilesList.addEventListener("change", (event) => {
+  if (!(event.target instanceof Element)) return;
+  if (event.target && event.target.classList.contains("upload-select")) {
+    syncUploadSelectionState();
+  }
+});
+refs.uploadedFilesList.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const button = event.target.closest("[data-action='select-upload']");
+  if (button) {
+    selectUploadedFile(button.dataset.fileName || "");
+    return;
+  }
+
+  const row = event.target.closest(".upload-file-row");
+  if (row && !event.target.closest("input")) {
+    const checkbox = row.querySelector(".upload-select");
+    if (checkbox) {
+      checkbox.checked = !checkbox.checked;
+      syncUploadSelectionState();
+    }
+  }
+});
+refs.uploadManagerPanel.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const refreshButton = event.target.closest("#refreshUploadsBtn");
+  if (refreshButton) {
+    event.preventDefault();
+    loadUploads();
+    return;
+  }
+
+  const deleteButton = event.target.closest("#deleteUploadsBtn");
+  if (deleteButton && !refs.deleteUploadsBtn.disabled) {
+    event.preventDefault();
+    deleteSelectedUploads();
+  }
+});
 refs.lookupBtn.addEventListener("click", runLookup);
 refs.lookupInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {

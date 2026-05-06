@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260421-metric-compact">
+  <link rel="stylesheet" href="/static/styles.css?v=20260506-upload-notice">
 </head>
 <body>
   <header class="site-header" aria-label="Site header">
@@ -58,7 +58,7 @@
           <label class="field">
             <span>Audio File</span>
             <div id="audioDropZone" class="file-dropzone" tabindex="0" role="button" aria-label="Choose or drop an audio file">
-              <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac,.mp4" required>
+              <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac,.mp4">
               <p id="audioDropHint" class="file-drop-hint">Or drag and drop an audio file here.</p>
             </div>
           </label>
@@ -76,7 +76,25 @@
             <button type="button" id="clearBtn">Clear</button>
             <button type="button" id="bundleBtn">Build Bundle</button>
           </div>
+          <button type="button" id="showUploadsBtn" class="link-button">Manage uploaded files</button>
         </form>
+      </section>
+
+      <section id="uploadManagerPanel" class="panel upload-manager" hidden>
+        <div class="panel-title-row">
+          <h2>Uploaded Files</h2>
+          <button type="button" id="refreshUploadsBtn">Refresh</button>
+        </div>
+        <div class="upload-actions">
+          <label class="select-all-row">
+            <input id="selectAllUploads" type="checkbox">
+            <span>Select all</span>
+          </label>
+          <button type="button" id="deleteUploadsBtn" disabled>Delete Selected</button>
+        </div>
+        <div id="uploadedFilesList" class="uploaded-files-list">
+          <p class="upload-empty">No uploaded files found.</p>
+        </div>
       </section>
 
       <section class="panel artifacts">
@@ -215,6 +233,6 @@
     <p class="footer-links">Privacy Notice | Cookie Preferences</p>
   </footer>
 
-  <script src="/static/app.js?v=20260421-last-refresh-state-change" defer></script>
+  <script src="/static/app.js?v=20260506-upload-notice" defer></script>
 </body>
 </html>

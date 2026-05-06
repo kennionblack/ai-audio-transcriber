@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -42,6 +43,7 @@ MAX_LOOKUP_MATCHES_PER_SECTION = 6
 LOOKUP_CONTEXT_CHARS = 45
 LOG_TAIL_LINES = 150
 LOG_TAIL_CHUNK_SIZE = 8192
+LOG_TAIL_MAX_BYTES = 1024 * 1024
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 STARTING_PROCESS = object()
 
@@ -57,7 +59,17 @@ def _env_float(name: str, default: float, minimum: float) -> float:
 WS_ACTIVE_INTERVAL_SECONDS = _env_float("VOXAI_WS_ACTIVE_INTERVAL_SECONDS", 0.7, 0.1)
 WS_IDLE_INTERVAL_SECONDS = _env_float("VOXAI_WS_IDLE_INTERVAL_SECONDS", 3.0, WS_ACTIVE_INTERVAL_SECONDS)
 
-app = FastAPI(title="VoxAI")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
+    yield
+
+
+app = FastAPI(title="VoxAI", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
@@ -90,6 +102,15 @@ class LookupPayload(BaseModel):
 
 class BundlePayload(BaseModel):
     language: str | None = None
+
+
+class ExistingUploadPayload(BaseModel):
+    file_name: str
+    language: str | None = None
+
+
+class DeleteUploadsPayload(BaseModel):
+    file_names: list[str]
 
 
 def _append_timeline_locked(label: str, detail: str) -> None:
@@ -134,6 +155,40 @@ def _language_value_to_code(language_value: str | None) -> str | None:
     return code if code in SUPPORTED_LANGUAGES else None
 
 
+def _upload_path_for_name(file_name: str) -> Path:
+    if not file_name or Path(file_name).name != file_name:
+        raise HTTPException(status_code=400, detail="Invalid upload file name.")
+    upload_path = (UPLOAD_DIR / file_name).resolve()
+    try:
+        upload_path.relative_to(UPLOAD_DIR.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid upload file name.") from exc
+    if upload_path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
+        raise HTTPException(status_code=400, detail="Unsupported upload file type.")
+    return upload_path
+
+
+def _list_uploaded_audio_files() -> list[dict[str, object]]:
+    if not UPLOAD_DIR.exists():
+        return []
+    files: list[dict[str, object]] = []
+    for path in UPLOAD_DIR.iterdir():
+        if not path.is_file() or path.suffix.lower() not in SUPPORTED_AUDIO_SUFFIXES:
+            continue
+        try:
+            stat_result = path.stat()
+        except OSError:
+            continue
+        files.append(
+            {
+                "name": path.name,
+                "size": stat_result.st_size,
+                "modified_at": datetime.fromtimestamp(stat_result.st_mtime).isoformat(),
+            }
+        )
+    return sorted(files, key=lambda item: str(item["modified_at"]), reverse=True)
+
+
 def _normalize_export_files(raw: object) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
@@ -170,16 +225,18 @@ def _read_log_tail(log_path: Path | None) -> str:
     try:
         chunks: list[bytes] = []
         lines_found = 0
+        bytes_read = 0
         with log_path.open("rb") as log_file:
             log_file.seek(0, 2)
             position = log_file.tell()
-            while position > 0 and lines_found <= LOG_TAIL_LINES:
-                read_size = min(LOG_TAIL_CHUNK_SIZE, position)
+            while position > 0 and lines_found <= LOG_TAIL_LINES and bytes_read < LOG_TAIL_MAX_BYTES:
+                read_size = min(LOG_TAIL_CHUNK_SIZE, position, LOG_TAIL_MAX_BYTES - bytes_read)
                 position -= read_size
                 log_file.seek(position)
                 chunk = log_file.read(read_size)
                 chunks.append(chunk)
                 lines_found += chunk.count(b"\n")
+                bytes_read += len(chunk)
     except OSError:
         return ""
     lines = b"".join(reversed(chunks)).decode("utf-8", errors="replace").splitlines()
@@ -318,23 +375,26 @@ def _reader_thread(process: subprocess.Popen) -> None:
         if STATE["process"] is not process:
             return
         STATE["process"] = None
+        if return_code != 0:
+            STATE["status"] = f"Failed (exit {return_code})"
+            STATE["output"] = STATE["output"] or "\n".join(fallback_output_lines).strip()
+            STATE["completed_at"] = datetime.now()
+            STATE["notice"] = "Run failed. Check logs."
+            _append_timeline_locked("Run failed", STATE["status"])
+            return
         if STATE["status"] == COMPLETED_STATUS:
             if not STATE["output"]:
                 STATE["output"] = "\n".join(fallback_output_lines).strip()
             if STATE["completed_at"] is None:
                 STATE["completed_at"] = datetime.now()
             return
-        STATE["status"] = COMPLETED_STATUS if return_code == 0 else f"Failed (exit {return_code})"
+        STATE["status"] = COMPLETED_STATUS
         STATE["output"] = STATE["output"] or "\n".join(fallback_output_lines).strip()
         if STATE["status"] == COMPLETED_STATUS and not STATE["transcription_output"]:
             STATE["transcription_output"] = STATE["output"]
         STATE["completed_at"] = datetime.now()
-        if STATE["status"].startswith("Failed"):
-            STATE["notice"] = "Run failed. Check logs."
-            _append_timeline_locked("Run failed", STATE["status"])
-        else:
-            STATE["notice"] = "Run completed."
-            _append_timeline_locked("Run completed", "Process exited successfully.")
+        STATE["notice"] = "Run completed."
+        _append_timeline_locked("Run completed", "Process exited successfully.")
 
 
 def _terminate_process_locked() -> None:
@@ -392,23 +452,7 @@ async def websocket_state(websocket: WebSocket):
         return
 
 
-@app.post("/api/transcribe")
-async def transcribe(audio_file: UploadFile = File(...), language: str | None = Form(None)):
-    suffix = Path(audio_file.filename or "").suffix.lower()
-    if suffix not in SUPPORTED_AUDIO_SUFFIXES:
-        supported = ", ".join(sorted(SUPPORTED_AUDIO_SUFFIXES))
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Supported: {supported}")
-
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    safe_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{Path(audio_file.filename or 'audio').name}"
-    upload_path = UPLOAD_DIR / safe_name
-    try:
-        await _save_upload_file(audio_file, upload_path)
-    except OSError as exc:
-        upload_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail="Failed to save uploaded audio.") from exc
-    translate_lang = _language_value_to_code(language)
-
+def _start_transcription_process(upload_path: Path, translate_lang: str | None) -> dict:
     with STATE_LOCK:
         existing = STATE["process"]
         if _process_is_active(existing):
@@ -463,7 +507,70 @@ async def transcribe(audio_file: UploadFile = File(...), language: str | None = 
         raise HTTPException(status_code=409, detail="Transcription start was cancelled.")
 
     threading.Thread(target=_reader_thread, args=(process,), daemon=True).start()
-    return JSONResponse(_snapshot_state())
+    return _snapshot_state()
+
+
+@app.get("/api/uploads")
+async def list_uploads():
+    return {"files": _list_uploaded_audio_files()}
+
+
+@app.post("/api/transcribe")
+async def transcribe(audio_file: UploadFile = File(...), language: str | None = Form(None)):
+    suffix = Path(audio_file.filename or "").suffix.lower()
+    if suffix not in SUPPORTED_AUDIO_SUFFIXES:
+        supported = ", ".join(sorted(SUPPORTED_AUDIO_SUFFIXES))
+        raise HTTPException(status_code=400, detail=f"Unsupported file type. Supported: {supported}")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}_{Path(audio_file.filename or 'audio').name}"
+    upload_path = UPLOAD_DIR / safe_name
+    try:
+        await _save_upload_file(audio_file, upload_path)
+    except OSError as exc:
+        upload_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded audio.") from exc
+
+    state = _start_transcription_process(upload_path, _language_value_to_code(language))
+    return JSONResponse(state)
+
+
+@app.post("/api/transcribe-existing")
+async def transcribe_existing(payload: ExistingUploadPayload):
+    upload_path = _upload_path_for_name(payload.file_name)
+    if not upload_path.exists() or not upload_path.is_file():
+        raise HTTPException(status_code=404, detail="Uploaded file not found.")
+    state = _start_transcription_process(upload_path, _language_value_to_code(payload.language))
+    return JSONResponse(state)
+
+
+@app.post("/api/uploads/delete")
+async def delete_uploads(payload: DeleteUploadsPayload):
+    if not payload.file_names:
+        raise HTTPException(status_code=400, detail="Select at least one uploaded file.")
+    upload_paths = [_upload_path_for_name(file_name) for file_name in payload.file_names]
+    with STATE_LOCK:
+        active_name = STATE["active_audio_name"]
+        process = STATE["process"]
+        if _process_is_active(process) and active_name in {path.name for path in upload_paths}:
+            raise HTTPException(status_code=409, detail="Cannot delete the upload used by the active run.")
+
+    deleted: list[str] = []
+    missing: list[str] = []
+    for upload_path in upload_paths:
+        if not upload_path.exists():
+            missing.append(upload_path.name)
+            continue
+        try:
+            upload_path.unlink()
+            deleted.append(upload_path.name)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to delete {upload_path.name}.") from exc
+
+    with STATE_LOCK:
+        if STATE["active_audio_name"] in deleted:
+            STATE["active_audio_name"] = None
+    return {"deleted": deleted, "missing": missing, "files": _list_uploaded_audio_files()}
 
 
 @app.post("/api/clear")
@@ -636,14 +743,6 @@ async def download_bundle():
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="Bundle file not found.")
     return FileResponse(path=file_path, filename=file_path.name, media_type="application/zip")
-
-
-@app.on_event("startup")
-async def startup_event():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 if __name__ == "__main__":
