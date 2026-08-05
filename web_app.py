@@ -80,11 +80,13 @@ STATE = {
     "notice": READY_NOTICE,
     "output": "",
     "transcription_output": "",
+    "raw_transcript_output": "",
     "summary_output": "",
     "translations": {},
     "translated_summaries": {},
     "pdf_output": None,
     "export_files": {},
+    "verbatim_export_files": {},
     "bundle_output": None,
     "translate_lang": None,
     "started_at": None,
@@ -127,11 +129,13 @@ def _append_timeline_locked(label: str, detail: str) -> None:
 def _reset_outputs_locked() -> None:
     STATE["output"] = ""
     STATE["transcription_output"] = ""
+    STATE["raw_transcript_output"] = ""
     STATE["summary_output"] = ""
     STATE["translations"] = {}
     STATE["translated_summaries"] = {}
     STATE["pdf_output"] = None
     STATE["export_files"] = {}
+    STATE["verbatim_export_files"] = {}
     STATE["bundle_output"] = None
     STATE["translate_lang"] = None
     STATE["started_at"] = None
@@ -257,11 +261,13 @@ def _snapshot_state() -> dict:
             "notice": STATE["notice"],
             "output": STATE["output"],
             "transcription_output": STATE["transcription_output"],
+            "raw_transcript_output": STATE["raw_transcript_output"],
             "summary_output": STATE["summary_output"],
             "translations": dict(STATE["translations"]),
             "translated_summaries": dict(STATE["translated_summaries"]),
             "pdf_output": STATE["pdf_output"],
             "export_files": dict(STATE["export_files"]),
+            "verbatim_export_files": dict(STATE["verbatim_export_files"]),
             "bundle_output": STATE["bundle_output"],
             "translate_lang": STATE["translate_lang"],
             "started_at": STATE["started_at"].isoformat() if STATE["started_at"] else None,
@@ -285,6 +291,10 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
     with STATE_LOCK:
         if STATE["process"] is not process:
             return
+    if event_type == "raw_transcript_ready":
+        with STATE_LOCK:
+            STATE["raw_transcript_output"] = str(payload.get("transcript", "")).strip()
+        return
     if event_type == "transcript_ready":
         with STATE_LOCK:
             STATE["transcription_output"] = str(payload.get("transcript", "")).strip()
@@ -322,8 +332,10 @@ def _handle_event(process: subprocess.Popen, payload: dict) -> None:
         return
     if event_type == "export_files_ready":
         export_files = _normalize_export_files(payload.get("export_files"))
+        verbatim_export_files = _normalize_export_files(payload.get("verbatim_export_files"))
         with STATE_LOCK:
             STATE["export_files"] = export_files
+            STATE["verbatim_export_files"] = verbatim_export_files
             STATE["pdf_output"] = export_files.get("pdf")
             STATE["notice"] = "Export files ready."
             _append_timeline_locked("Exports ready", "JSON, DOCX, and PDF written.")
@@ -664,7 +676,17 @@ async def create_bundle(payload: BundlePayload):
 
 
 @app.get("/api/download/pdf")
-async def download_pdf(language: str | None = None):
+async def download_pdf(language: str | None = None, verbatim: bool = False):
+    if verbatim:
+        with STATE_LOCK:
+            pdf_path = STATE["verbatim_export_files"].get("pdf")
+        if not pdf_path:
+            raise HTTPException(status_code=404, detail="No verbatim PDF available.")
+        file_path = Path(pdf_path)
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Verbatim PDF file not found.")
+        return FileResponse(path=file_path, filename=file_path.name, media_type="application/pdf")
+
     language_code = _language_value_to_code(language)
     with STATE_LOCK:
         pdf_path = STATE["pdf_output"]
@@ -682,7 +704,21 @@ async def download_pdf(language: str | None = None):
 
 
 @app.get("/api/download/docx")
-async def download_docx(language: str | None = None):
+async def download_docx(language: str | None = None, verbatim: bool = False):
+    if verbatim:
+        with STATE_LOCK:
+            docx_path = STATE["verbatim_export_files"].get("docx")
+        if not docx_path:
+            raise HTTPException(status_code=404, detail="No verbatim DOCX available.")
+        file_path = Path(docx_path)
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Verbatim DOCX file not found.")
+        return FileResponse(
+            path=file_path,
+            filename=file_path.name,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
     language_code = _language_value_to_code(language)
     with STATE_LOCK:
         docx_path = STATE["export_files"].get("docx")
@@ -710,7 +746,17 @@ async def download_docx(language: str | None = None):
 
 
 @app.get("/api/download/json")
-async def download_json(language: str | None = None):
+async def download_json(language: str | None = None, verbatim: bool = False):
+    if verbatim:
+        with STATE_LOCK:
+            json_path = STATE["verbatim_export_files"].get("json")
+        if not json_path:
+            raise HTTPException(status_code=404, detail="No verbatim JSON export available.")
+        file_path = Path(json_path)
+        if not file_path.exists() or not file_path.is_file():
+            raise HTTPException(status_code=404, detail="Verbatim JSON file not found.")
+        return FileResponse(path=file_path, filename=file_path.name, media_type="application/json")
+
     language_code = _language_value_to_code(language)
     with STATE_LOCK:
         json_path = STATE["export_files"].get("json")
