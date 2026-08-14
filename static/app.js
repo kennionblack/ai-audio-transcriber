@@ -1,4 +1,6 @@
 const refs = {
+  togglePlatformMetaBtn: document.getElementById("togglePlatformMetaBtn"),
+  platformMetaPills: document.getElementById("platformMetaPills"),
   statusBadge: document.getElementById("statusBadge"),
   noticeText: document.getElementById("noticeText"),
   runForm: document.getElementById("runForm"),
@@ -20,6 +22,19 @@ const refs = {
   cancelDeleteUploadsBtn: document.getElementById("cancelDeleteUploadsBtn"),
   confirmDeleteUploadsBtn: document.getElementById("confirmDeleteUploadsBtn"),
   uploadedFilesList: document.getElementById("uploadedFilesList"),
+  showHistoryBtn: document.getElementById("showHistoryBtn"),
+  historyPanel: document.getElementById("historyPanel"),
+  toggleHistorySelectBtn: document.getElementById("toggleHistorySelectBtn"),
+  refreshHistoryBtn: document.getElementById("refreshHistoryBtn"),
+  closeHistoryBtn: document.getElementById("closeHistoryBtn"),
+  historyBulkActions: document.getElementById("historyBulkActions"),
+  selectAllHistory: document.getElementById("selectAllHistory"),
+  deleteHistoryBtn: document.getElementById("deleteHistoryBtn"),
+  historyList: document.getElementById("historyList"),
+  historyDeleteConfirmPopup: document.getElementById("historyDeleteConfirmPopup"),
+  historyDeleteConfirmMessage: document.getElementById("historyDeleteConfirmMessage"),
+  cancelHistoryDeleteBtn: document.getElementById("cancelHistoryDeleteBtn"),
+  confirmHistoryDeleteBtn: document.getElementById("confirmHistoryDeleteBtn"),
   artifactSelect: document.getElementById("artifactSelect"),
   artifactVerbatimToggle: document.getElementById("artifactVerbatimToggle"),
   artifactStatus: document.getElementById("artifactStatus"),
@@ -68,6 +83,9 @@ let latestArtifactUrls = {
   bundle: null,
 };
 let showingVerbatimTranscript = false;
+let historyEntries = [];
+let pendingDeleteHistoryStems = [];
+let historySelectionMode = false;
 
 const ARTIFACT_LABELS = {
   pdf: "PDF Report",
@@ -75,6 +93,7 @@ const ARTIFACT_LABELS = {
   json: "JSON Package",
   bundle: "Bundle (ZIP)",
 };
+const HISTORY_FORMAT_LABELS = { pdf: "PDF", docx: "DOCX", json: "JSON" };
 const ACCEPTED_AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".m4a", ".flac", ".mp4"]);
 let audioDropDragDepth = 0;
 
@@ -746,6 +765,207 @@ async function deleteSelectedUploads() {
   }
 }
 
+function buildHistoryDownloadUrl(stem, format, verbatim) {
+  const params = new URLSearchParams({ stem, format });
+  if (verbatim) params.set("verbatim", "true");
+  return `/api/history/download?${params.toString()}`;
+}
+
+function getSelectedHistoryStems() {
+  return Array.from(refs.historyList.querySelectorAll(".history-select:checked")).map((input) => input.value);
+}
+
+function syncHistorySelectionState() {
+  const checkboxes = Array.from(refs.historyList.querySelectorAll(".history-select"));
+  const selectedCount = checkboxes.filter((input) => input.checked).length;
+  refs.deleteHistoryBtn.disabled = selectedCount === 0;
+  refs.deleteHistoryBtn.setAttribute("aria-disabled", selectedCount === 0 ? "true" : "false");
+  refs.selectAllHistory.disabled = checkboxes.length === 0;
+  refs.selectAllHistory.checked = checkboxes.length > 0 && selectedCount === checkboxes.length;
+  refs.selectAllHistory.indeterminate = selectedCount > 0 && selectedCount < checkboxes.length;
+  refs.historyBulkActions.hidden = selectedCount === 0;
+}
+
+function setHistorySelectionMode(active) {
+  historySelectionMode = active;
+  refs.historyList.classList.toggle("selecting", active);
+  refs.toggleHistorySelectBtn.textContent = active ? "Cancel" : "Select";
+  refs.toggleHistorySelectBtn.setAttribute("aria-pressed", String(active));
+  if (!active) {
+    refs.historyList.querySelectorAll(".history-select").forEach((input) => {
+      input.checked = false;
+    });
+  }
+  syncHistorySelectionState();
+}
+
+function toggleHistorySelectionMode() {
+  setHistorySelectionMode(!historySelectionMode);
+}
+
+function renderHistory(entries) {
+  historyEntries = Array.isArray(entries) ? entries : [];
+  refs.historyList.replaceChildren();
+  if (!historyEntries.length) {
+    const empty = document.createElement("p");
+    empty.className = "upload-empty";
+    empty.textContent = "No transcriptions found.";
+    refs.historyList.append(empty);
+    syncHistorySelectionState();
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  historyEntries.forEach((entry) => {
+    const row = document.createElement("article");
+    row.className = "history-row";
+    row.dataset.stem = entry.stem;
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.className = "history-select";
+    checkbox.value = entry.stem;
+    checkbox.setAttribute("aria-label", `Select ${entry.audio_name || entry.stem}`);
+
+    const details = document.createElement("div");
+    details.className = "history-details";
+    const name = document.createElement("p");
+    name.className = "history-file-name";
+    name.textContent = entry.audio_name || entry.stem;
+    const meta = document.createElement("p");
+    meta.className = "history-file-meta";
+    meta.textContent = formatDateTime(entry.created_at);
+    details.append(name, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "history-row-actions";
+
+    const hasVerbatim = Boolean(entry.verbatim_formats && entry.verbatim_formats.length);
+    let verbatimToggle = null;
+    if (hasVerbatim) {
+      const toggleLabel = document.createElement("label");
+      toggleLabel.className = "history-verbatim-toggle";
+      verbatimToggle = document.createElement("input");
+      verbatimToggle.type = "checkbox";
+      const toggleText = document.createElement("span");
+      toggleText.textContent = "Verbatim";
+      toggleLabel.append(verbatimToggle, toggleText);
+      actions.append(toggleLabel);
+    }
+
+    const downloadGroup = document.createElement("div");
+    downloadGroup.className = "history-download-group";
+    ["pdf", "docx", "json"].forEach((format) => {
+      const link = document.createElement("a");
+      link.className = "download";
+      link.textContent = HISTORY_FORMAT_LABELS[format];
+
+      const updateLink = () => {
+        const verbatim = Boolean(verbatimToggle && verbatimToggle.checked);
+        const available = verbatim ? entry.verbatim_formats : entry.formats;
+        setDownloadState(link, available && available.includes(format) ? buildHistoryDownloadUrl(entry.stem, format, verbatim) : null);
+      };
+      updateLink();
+      if (verbatimToggle) verbatimToggle.addEventListener("change", updateLink);
+      downloadGroup.append(link);
+    });
+    actions.append(downloadGroup);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "danger";
+    deleteBtn.dataset.action = "delete-history";
+    deleteBtn.dataset.stem = entry.stem;
+    deleteBtn.textContent = "Delete";
+
+    row.append(checkbox, details, actions, deleteBtn);
+    fragment.append(row);
+  });
+  refs.historyList.append(fragment);
+  syncHistorySelectionState();
+}
+
+async function loadHistory() {
+  try {
+    refs.noticeText.textContent = "Refreshing history.";
+    const response = await fetch("/api/history");
+    if (!response.ok) {
+      const details = await response.json().catch(() => ({}));
+      throw new Error(details.detail || `Request failed (${response.status})`);
+    }
+    const data = await response.json();
+    renderHistory(data.entries || []);
+    refs.noticeText.textContent = `Loaded ${(data.entries || []).length} transcription(s).`;
+  } catch (error) {
+    refs.noticeText.textContent = String(error.message || error);
+  }
+}
+
+async function toggleHistoryPanel() {
+  if (refs.historyPanel.hidden) {
+    refs.historyPanel.hidden = false;
+    await loadHistory();
+    refs.refreshHistoryBtn.focus();
+  } else {
+    closeHistoryPanel();
+  }
+}
+
+function closeHistoryPanel() {
+  hideHistoryDeleteConfirm();
+  setHistorySelectionMode(false);
+  refs.historyPanel.hidden = true;
+  refs.showHistoryBtn.focus();
+}
+
+function showHistoryDeleteConfirm(stems) {
+  if (!stems || !stems.length) return;
+  pendingDeleteHistoryStems = stems;
+  if (stems.length === 1) {
+    const entry = historyEntries.find((item) => item.stem === stems[0]);
+    const label = (entry && (entry.audio_name || entry.stem)) || stems[0];
+    refs.historyDeleteConfirmMessage.textContent = `Delete "${label}"? This removes the uploaded audio and all transcript files. This cannot be undone.`;
+  } else {
+    refs.historyDeleteConfirmMessage.textContent = `Delete ${stems.length} selected transcription(s)? This removes the uploaded audio and all transcript files. This cannot be undone.`;
+  }
+  refs.historyDeleteConfirmPopup.hidden = false;
+  refs.confirmHistoryDeleteBtn.focus();
+}
+
+function hideHistoryDeleteConfirm() {
+  pendingDeleteHistoryStems = [];
+  refs.historyDeleteConfirmPopup.hidden = true;
+}
+
+function requestDeleteSelectedHistory() {
+  const stems = getSelectedHistoryStems();
+  if (!stems.length) return;
+  showHistoryDeleteConfirm(stems);
+}
+
+async function deleteSelectedHistory() {
+  const stems = pendingDeleteHistoryStems.slice();
+  if (!stems.length) return;
+  hideHistoryDeleteConfirm();
+  try {
+    const data = await callJson("/api/history/delete", { stems });
+    renderHistory(data.entries || []);
+    refs.noticeText.textContent =
+      data.deleted_stems && data.deleted_stems.length
+        ? `Deleted ${data.deleted_stems.length} transcription history item(s).`
+        : "No history items deleted.";
+    await refreshUploadedFilesSilently();
+    const deletedStems = data.deleted_stems || [];
+    const activeStem = latestState && latestState.active_audio_name ? latestState.active_audio_name.replace(/\.[^./]+$/, "") : null;
+    if (activeStem && deletedStems.includes(activeStem)) {
+      const stateResponse = await fetch("/api/state");
+      if (stateResponse.ok) renderState(await stateResponse.json());
+    }
+  } catch (error) {
+    refs.noticeText.textContent = String(error.message || error);
+  }
+}
+
 async function submitRun(event) {
   event.preventDefault();
   const file = refs.audioFileInput.files[0];
@@ -822,6 +1042,15 @@ async function copyTranscript() {
   }
   refs.copyToast.classList.add("show");
   setTimeout(() => refs.copyToast.classList.remove("show"), 1600);
+}
+
+function togglePlatformMeta() {
+  const expanded = refs.togglePlatformMetaBtn.getAttribute("aria-expanded") === "true";
+  const next = !expanded;
+  refs.togglePlatformMetaBtn.setAttribute("aria-expanded", String(next));
+  refs.togglePlatformMetaBtn.setAttribute("aria-label", next ? "Collapse platform highlights" : "Expand platform highlights");
+  refs.togglePlatformMetaBtn.title = next ? "Collapse" : "Expand";
+  refs.platformMetaPills.hidden = !next;
 }
 
 function activateTab(tabName) {
@@ -927,13 +1156,56 @@ refs.uploadManagerPanel.addEventListener("click", (event) => {
 refs.cancelDeleteUploadsBtn.addEventListener("click", hideDeleteConfirmPopup);
 refs.confirmDeleteUploadsBtn.addEventListener("click", deleteSelectedUploads);
 refs.lookupBtn.addEventListener("click", runLookup);
+refs.showHistoryBtn.addEventListener("click", toggleHistoryPanel);
+refs.toggleHistorySelectBtn.addEventListener("click", toggleHistorySelectionMode);
+refs.closeHistoryBtn.addEventListener("click", closeHistoryPanel);
+refs.historyPanel.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  if (event.target === refs.historyPanel) {
+    closeHistoryPanel();
+    return;
+  }
+  const refreshButton = event.target.closest("#refreshHistoryBtn");
+  if (refreshButton) {
+    event.preventDefault();
+    loadHistory();
+  }
+});
+refs.historyList.addEventListener("click", (event) => {
+  if (!(event.target instanceof Element)) return;
+  const deleteButton = event.target.closest("[data-action='delete-history']");
+  if (deleteButton) showHistoryDeleteConfirm([deleteButton.dataset.stem || ""].filter(Boolean));
+});
+refs.historyList.addEventListener("change", (event) => {
+  if (!(event.target instanceof Element)) return;
+  if (event.target.classList.contains("history-select")) syncHistorySelectionState();
+});
+refs.selectAllHistory.addEventListener("change", () => {
+  refs.historyList.querySelectorAll(".history-select").forEach((input) => {
+    input.checked = refs.selectAllHistory.checked;
+  });
+  syncHistorySelectionState();
+});
+refs.deleteHistoryBtn.addEventListener("click", () => {
+  if (!refs.deleteHistoryBtn.disabled) requestDeleteSelectedHistory();
+});
+refs.cancelHistoryDeleteBtn.addEventListener("click", hideHistoryDeleteConfirm);
+refs.confirmHistoryDeleteBtn.addEventListener("click", deleteSelectedHistory);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !refs.deleteConfirmPopup.hidden) {
     hideDeleteConfirmPopup();
     return;
   }
+  if (event.key === "Escape" && !refs.historyDeleteConfirmPopup.hidden) {
+    hideHistoryDeleteConfirm();
+    return;
+  }
   if (event.key === "Escape" && !refs.uploadManagerPanel.hidden) {
     closeUploadManager();
+    return;
+  }
+  if (event.key === "Escape" && !refs.historyPanel.hidden) {
+    closeHistoryPanel();
   }
 });
 refs.lookupInput.addEventListener("keydown", (event) => {
@@ -972,6 +1244,7 @@ refs.previousUploadSelect.addEventListener("change", () => {
 refs.tabButtons.forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));
 });
+refs.togglePlatformMetaBtn.addEventListener("click", togglePlatformMeta);
 window.addEventListener("resize", resizeResultOutputs);
 
 setupAudioDropZone();

@@ -435,13 +435,21 @@ textarea {
 }
 
 button {
-  border: 1px solid #c7d7f2;
+  border: 1px solid var(--line);
   border-radius: 9px;
-  background: #edf3ff;
+  background: transparent;
   color: #214fa6;
   font-weight: 600;
   padding: 0.5rem 0.62rem;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+button:hover,
+button:focus-visible {
+  border-color: #214fa6;
+  background: #214fa6;
+  color: #ffffff;
 }
 
 button:disabled {
@@ -449,7 +457,9 @@ button:disabled {
   opacity: 0.55;
 }
 
-button.primary {
+button.primary,
+button.primary:hover,
+button.primary:focus-visible {
   border: 0;
   background: linear-gradient(120deg, #2048b9, #246ede);
   color: #fff;
@@ -463,14 +473,22 @@ button.primary {
 
 .link-button {
   margin-top: 0.52rem;
-  border: 1px solid #c7d7f2;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f3f7ff;
+  background: transparent;
   color: var(--primary);
   padding: 0.34rem 0.58rem;
   font-size: 0.78rem;
   cursor: pointer;
   width: 100%;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.link-button:hover,
+.link-button:focus-visible {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
 }
 
 .panel-title-row {
@@ -547,26 +565,30 @@ button.primary {
 }
 
 #refreshUploadsBtn {
+  border-color: var(--line);
+  background: transparent;
+  color: #1f9d63;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#refreshUploadsBtn:hover,
+#refreshUploadsBtn:focus-visible {
   border-color: #17804f;
   background: #1f9d63;
   color: #ffffff;
 }
 
-#refreshUploadsBtn:hover,
-#refreshUploadsBtn:focus-visible {
-  background: #147447;
-  color: #ffffff;
-}
-
 #closeUploadManagerBtn {
-  border-color: #a93427;
-  background: #c94333;
-  color: #ffffff;
+  border-color: var(--line);
+  background: transparent;
+  color: #c94333;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 #closeUploadManagerBtn:hover,
 #closeUploadManagerBtn:focus-visible {
-  background: #a93427;
+  border-color: #a93427;
+  background: #c94333;
   color: #ffffff;
 }
 
@@ -643,6 +665,151 @@ button.primary {
   border-radius: 7px;
 }
 
+#refreshHistoryBtn {
+  border-color: transparent;
+  background: transparent;
+  color: #1f9d63;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#refreshHistoryBtn:hover,
+#refreshHistoryBtn:focus-visible {
+  border-color: #17804f;
+  background: #1f9d63;
+  color: #ffffff;
+}
+
+#closeHistoryBtn {
+  border-color: transparent;
+  background: transparent;
+  color: #c94333;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#closeHistoryBtn:hover,
+#closeHistoryBtn:focus-visible {
+  border-color: #a93427;
+  background: #c94333;
+  color: #ffffff;
+}
+
+.history-row {
+  border: 1px solid rgba(120, 144, 181, 0.75);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 0.5rem 0.55rem;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.6rem;
+}
+
+.history-row input[type="checkbox"] {
+  width: auto;
+  accent-color: #174ea6;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.history-select {
+  display: none;
+}
+
+#historyList.selecting .history-select {
+  display: inline-block;
+}
+
+#historyBulkActions[hidden] {
+  display: none;
+}
+
+.history-details {
+  flex: 1 1 9rem;
+  min-width: 6rem;
+}
+
+.history-file-name {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  color: #0f213b;
+}
+
+.history-file-meta {
+  margin: 0.12rem 0 0;
+  color: #334967;
+  font-size: 0.7rem;
+}
+
+.history-row button {
+  padding: 0.28rem 0.5rem;
+  font-size: 0.65rem;
+  border-radius: 7px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+#historyList .download,
+#historyList button.danger {
+  border-color: transparent;
+}
+
+#historyList .download:hover,
+#historyList .download:focus-visible {
+  border-color: #224ea4;
+  background: #224ea4;
+  color: #ffffff;
+}
+
+#toggleHistorySelectBtn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--primary);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#toggleHistorySelectBtn:hover,
+#toggleHistorySelectBtn:focus-visible {
+  border-color: #c7d7f2;
+  background: #edf3ff;
+  color: #214fa6;
+}
+
+.history-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+}
+
+.history-verbatim-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #334967;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.history-verbatim-toggle input {
+  width: auto;
+  accent-color: #174ea6;
+}
+
+.history-download-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.history-download-group .download {
+  padding: 0.22rem 0.48rem;
+  font-size: 0.7rem;
+}
+
 .delete-confirm-popup {
   position: absolute;
   left: 50%;
@@ -691,6 +858,13 @@ button.primary {
 }
 
 button.danger {
+  border-color: var(--line);
+  background: transparent;
+  color: #c84534;
+}
+
+button.danger:hover,
+button.danger:focus-visible {
   border-color: #b94b3b;
   background: #c84534;
   color: #ffffff;
@@ -755,11 +929,47 @@ button.danger {
   font-weight: 600;
 }
 
+.platform-meta-header {
+  margin-bottom: 0.6rem;
+}
+
+.platform-meta-title {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+#togglePlatformMetaBtn {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+#togglePlatformMetaBtn:hover,
+#togglePlatformMetaBtn:focus-visible {
+  border-color: #214fa6;
+  background: #214fa6;
+  color: #ffffff;
+}
+
+#togglePlatformMetaBtn svg {
+  transition: transform 0.2s ease;
+}
+
+#togglePlatformMetaBtn[aria-expanded="false"] svg {
+  transform: rotate(-90deg);
+}
+
 .standalone-meta-pills {
   margin-top: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 0.42rem;
+}
+
+#platformMetaPills[hidden] {
+  display: none;
 }
 
 .metric-grid {
@@ -877,13 +1087,21 @@ button.danger {
 .download {
   display: inline-block;
   text-decoration: none;
-  border: 1px solid #c5d5ef;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #edf3ff;
+  background: transparent;
   color: #224ea4;
   padding: 0.24rem 0.54rem;
   font-size: 0.78rem;
   font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.download:hover,
+.download:focus-visible {
+  border-color: #224ea4;
+  background: #224ea4;
+  color: #ffffff;
 }
 
 .download.disabled {

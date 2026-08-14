@@ -33,6 +33,12 @@ TEMPLATE_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
 SUPPORTED_AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".flac", ".mp4"}
+OUTPUT_EXPORT_EXTENSIONS = {".json", ".docx", ".pdf"}
+HISTORY_MEDIA_TYPES = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "json": "application/json",
+}
 IDLE_STATUS = "Idle"
 RUNNING_STATUS = "Running"
 COMPLETED_STATUS = "Completed"
@@ -115,6 +121,10 @@ class DeleteUploadsPayload(BaseModel):
     file_names: list[str]
 
 
+class DeleteHistoryPayload(BaseModel):
+    stems: list[str]
+
+
 def _append_timeline_locked(label: str, detail: str) -> None:
     STATE["timeline"].append(
         {
@@ -191,6 +201,67 @@ def _list_uploaded_audio_files() -> list[dict[str, object]]:
             }
         )
     return sorted(files, key=lambda item: str(item["modified_at"]), reverse=True)
+
+
+def _validate_history_stem(stem: str) -> str:
+    if not stem or Path(stem).name != stem:
+        raise HTTPException(status_code=400, detail="Invalid history item.")
+    return stem
+
+
+def _is_translated_stem(core: str) -> bool:
+    match = re.search(r"_([a-z]{2,3})(?:_\d+)?$", core)
+    return bool(match and match.group(1) in SUPPORTED_LANGUAGES)
+
+
+def _find_upload_for_stem(stem: str) -> Path | None:
+    if not UPLOAD_DIR.exists():
+        return None
+    for upload_path in UPLOAD_DIR.iterdir():
+        if (
+            upload_path.is_file()
+            and upload_path.stem == stem
+            and upload_path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES
+        ):
+            return upload_path
+    return None
+
+
+def _list_history_entries() -> list[dict[str, object]]:
+    if not OUTPUT_DIR.exists():
+        return []
+    entries: dict[str, dict[str, object]] = {}
+    for path in OUTPUT_DIR.iterdir():
+        if not path.is_file() or path.suffix.lower() not in OUTPUT_EXPORT_EXTENSIONS:
+            continue
+        core = path.stem
+        is_verbatim = core.endswith("_verbatim")
+        if is_verbatim:
+            core = core[: -len("_verbatim")]
+        if _is_translated_stem(core):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        entry = entries.setdefault(core, {"created_at": mtime, "formats": set(), "verbatim_formats": set()})
+        entry["created_at"] = min(entry["created_at"], mtime)
+        target = entry["verbatim_formats"] if is_verbatim else entry["formats"]
+        target.add(path.suffix.lower().lstrip("."))
+
+    result = []
+    for stem, data in entries.items():
+        upload_path = _find_upload_for_stem(stem)
+        result.append(
+            {
+                "stem": stem,
+                "audio_name": upload_path.name if upload_path else None,
+                "created_at": datetime.fromtimestamp(data["created_at"]).isoformat(),
+                "formats": sorted(data["formats"]),
+                "verbatim_formats": sorted(data["verbatim_formats"]),
+            }
+        )
+    return sorted(result, key=lambda item: item["created_at"], reverse=True)
 
 
 def _normalize_export_files(raw: object) -> dict[str, str]:
@@ -583,6 +654,75 @@ async def delete_uploads(payload: DeleteUploadsPayload):
         if STATE["active_audio_name"] in deleted:
             STATE["active_audio_name"] = None
     return {"deleted": deleted, "missing": missing, "files": _list_uploaded_audio_files()}
+
+
+@app.get("/api/history")
+async def list_history():
+    return {"entries": _list_history_entries()}
+
+
+@app.get("/api/history/download")
+async def download_history_file(stem: str, format: str, verbatim: bool = False):
+    stem = _validate_history_stem(stem)
+    if format not in HISTORY_MEDIA_TYPES:
+        raise HTTPException(status_code=400, detail="Unsupported format.")
+    filename = f"{stem}{'_verbatim' if verbatim else ''}.{format}"
+    file_path = (OUTPUT_DIR / filename).resolve()
+    try:
+        file_path.relative_to(OUTPUT_DIR.resolve())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid history item.") from exc
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found.")
+    return FileResponse(path=file_path, filename=file_path.name, media_type=HISTORY_MEDIA_TYPES[format])
+
+
+@app.post("/api/history/delete")
+async def delete_history(payload: DeleteHistoryPayload):
+    if not payload.stems:
+        raise HTTPException(status_code=400, detail="Select at least one history item.")
+    stems = [_validate_history_stem(stem) for stem in payload.stems]
+
+    with STATE_LOCK:
+        process = STATE["process"]
+        active_stem = Path(STATE["active_audio_name"]).stem if STATE["active_audio_name"] else None
+        if _process_is_active(process) and active_stem in stems:
+            raise HTTPException(status_code=409, detail="Cannot delete the transcription used by the active run.")
+
+    deleted_files: list[str] = []
+    deleted_stems: list[str] = []
+    for stem in stems:
+        pattern = re.compile(rf"^{re.escape(stem)}(?:_.*)?\.(?:json|docx|pdf)$", re.IGNORECASE)
+        removed_any = False
+        for path in OUTPUT_DIR.iterdir():
+            if path.is_file() and pattern.match(path.name):
+                try:
+                    path.unlink()
+                    deleted_files.append(path.name)
+                    removed_any = True
+                except OSError:
+                    pass
+        upload_path = _find_upload_for_stem(stem)
+        if upload_path is not None:
+            try:
+                upload_path.unlink()
+                deleted_files.append(upload_path.name)
+                removed_any = True
+            except OSError:
+                pass
+        if removed_any:
+            deleted_stems.append(stem)
+
+    with STATE_LOCK:
+        active_name = STATE["active_audio_name"]
+        active_stem = Path(active_name).stem if active_name else None
+        if active_stem in deleted_stems and not _process_is_active(STATE["process"]):
+            STATE["active_audio_name"] = None
+            _reset_outputs_locked()
+        if deleted_stems:
+            _append_timeline_locked("History deleted", ", ".join(deleted_stems))
+
+    return {"deleted_stems": deleted_stems, "deleted_files": deleted_files, "entries": _list_history_entries()}
 
 
 @app.post("/api/clear")
