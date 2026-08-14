@@ -6,6 +6,7 @@ const refs = {
   audioDropZone: document.getElementById("audioDropZone"),
   audioDropHint: document.getElementById("audioDropHint"),
   languageSelect: document.getElementById("languageSelect"),
+  previousUploadSelect: document.getElementById("previousUploadSelect"),
   clearBtn: document.getElementById("clearBtn"),
   bundleBtn: document.getElementById("bundleBtn"),
   showUploadsBtn: document.getElementById("showUploadsBtn"),
@@ -20,6 +21,7 @@ const refs = {
   confirmDeleteUploadsBtn: document.getElementById("confirmDeleteUploadsBtn"),
   uploadedFilesList: document.getElementById("uploadedFilesList"),
   artifactSelect: document.getElementById("artifactSelect"),
+  artifactVerbatimToggle: document.getElementById("artifactVerbatimToggle"),
   artifactStatus: document.getElementById("artifactStatus"),
   artifactDownloadLink: document.getElementById("artifactDownloadLink"),
   metricStatus: document.getElementById("metricStatus"),
@@ -33,6 +35,7 @@ const refs = {
   summaryOutput: document.getElementById("summaryOutput"),
   logOutput: document.getElementById("logOutput"),
   copyTranscriptBtn: document.getElementById("copyTranscriptBtn"),
+  toggleVerbatimBtn: document.getElementById("toggleVerbatimBtn"),
   copyToast: document.getElementById("copyToast"),
   lookupInput: document.getElementById("lookupInput"),
   lookupBtn: document.getElementById("lookupBtn"),
@@ -59,11 +62,12 @@ let uploadedFiles = [];
 let selectedUploadName = null;
 let pendingDeleteNames = [];
 let latestArtifactUrls = {
-  pdf: null,
-  docx: null,
-  json: null,
+  pdf: { clean: null, verbatim: null },
+  docx: { clean: null, verbatim: null },
+  json: { clean: null, verbatim: null },
   bundle: null,
 };
+let showingVerbatimTranscript = false;
 
 const ARTIFACT_LABELS = {
   pdf: "PDF Report",
@@ -121,11 +125,13 @@ function buildStateSignature(state) {
     translate_lang: state.translate_lang || "",
     output: state.output || "",
     transcription_output: state.transcription_output || "",
+    raw_transcript_output: state.raw_transcript_output || "",
     summary_output: state.summary_output || "",
     translations: state.translations || {},
     translated_summaries: state.translated_summaries || {},
     pdf_output: state.pdf_output || "",
     export_files: state.export_files || {},
+    verbatim_export_files: state.verbatim_export_files || {},
     bundle_output: state.bundle_output || "",
     log_tail: state.log_tail || "",
     last_timeline: lastTimeline,
@@ -206,6 +212,10 @@ function buildDisplayState(state) {
   let pdfUrl = state.pdf_output ? "/api/download/pdf" : null;
   let docxUrl = state.export_files && state.export_files.docx ? "/api/download/docx" : null;
   let jsonUrl = state.export_files && state.export_files.json ? "/api/download/json" : null;
+  const verbatimExports = state.verbatim_export_files || {};
+  let pdfVerbatimUrl = verbatimExports.pdf ? "/api/download/pdf?verbatim=true" : null;
+  let docxVerbatimUrl = verbatimExports.docx ? "/api/download/docx?verbatim=true" : null;
+  let jsonVerbatimUrl = verbatimExports.json ? "/api/download/json?verbatim=true" : null;
 
   if (selectedLanguage && selectedLanguage === runLanguage) {
     const languageName = state.supported_languages[selectedLanguage] || selectedLanguage;
@@ -233,27 +243,58 @@ function buildDisplayState(state) {
     pdfUrl = null;
     docxUrl = null;
     jsonUrl = null;
+    pdfVerbatimUrl = null;
+    docxVerbatimUrl = null;
+    jsonVerbatimUrl = null;
   }
 
   if (!transcript && state.status === "Running") transcript = "Transcription running...";
   if (!transcript && (!state.status || state.status === "Idle")) transcript = "Ready.";
 
-  return { transcript, summary, viewName, pdfUrl, docxUrl, jsonUrl };
+  return {
+    transcript,
+    summary,
+    viewName,
+    pdfUrl,
+    docxUrl,
+    jsonUrl,
+    pdfVerbatimUrl,
+    docxVerbatimUrl,
+    jsonVerbatimUrl,
+  };
 }
 
 function renderArtifactSelection(running) {
   const selected = refs.artifactSelect.value || "pdf";
+  const verbatim = Boolean(refs.artifactVerbatimToggle && refs.artifactVerbatimToggle.checked);
   const label = ARTIFACT_LABELS[selected] || "Artifact";
-  const url = latestArtifactUrls[selected] || null;
+  const entry = latestArtifactUrls[selected];
+  const url = entry && typeof entry === "object" ? (verbatim ? entry.verbatim : entry.clean) : entry || null;
+  const supportsVerbatim = selected !== "bundle";
+
+  if (selected === "bundle" && !url) {
+    refs.artifactDownloadLink.href = "#";
+    refs.artifactDownloadLink.dataset.mode = "build";
+    if (running) {
+      refs.artifactDownloadLink.classList.add("disabled");
+      refs.artifactDownloadLink.setAttribute("aria-disabled", "true");
+      refs.artifactDownloadLink.textContent = "Building...";
+      refs.artifactStatus.textContent = "In progress";
+    } else {
+      refs.artifactDownloadLink.classList.remove("disabled");
+      refs.artifactDownloadLink.setAttribute("aria-disabled", "false");
+      refs.artifactDownloadLink.textContent = "Build Bundle (ZIP)";
+      refs.artifactStatus.textContent = "Not built";
+    }
+    return;
+  }
+
+  delete refs.artifactDownloadLink.dataset.mode;
   setDownloadState(refs.artifactDownloadLink, url);
-  refs.artifactDownloadLink.textContent = `Download ${label}`;
+  refs.artifactDownloadLink.textContent = `Download ${label}${verbatim && supportsVerbatim ? " (Verbatim)" : ""}`;
 
   if (url) {
     refs.artifactStatus.textContent = "Available";
-    return;
-  }
-  if (selected === "bundle" && !running) {
-    refs.artifactStatus.textContent = "Not built";
     return;
   }
   refs.artifactStatus.textContent = running ? "In progress" : "Pending";
@@ -316,6 +357,8 @@ function syncUploadedFileActions() {
     button.disabled = Boolean(running);
     button.textContent = button.dataset.fileName === selectedUploadName ? "Selected" : "Use";
   });
+  refs.previousUploadSelect.disabled = Boolean(running);
+  refs.previousUploadSelect.value = selectedUploadName || "";
 }
 
 function clearSelectedUpload() {
@@ -333,12 +376,28 @@ function selectUploadedFile(fileName) {
   refs.noticeText.textContent = `${selectedUploadName} Ready. File Selected`;
 }
 
+function populatePreviousUploadOptions() {
+  const select = refs.previousUploadSelect;
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = uploadedFiles.length ? "Select an uploaded file..." : "No uploaded files found.";
+  const options = [placeholder, ...uploadedFiles.map((file) => {
+    const option = document.createElement("option");
+    option.value = file.name || "";
+    option.textContent = file.name || "Unnamed upload";
+    return option;
+  })];
+  select.replaceChildren(...options);
+  select.value = selectedUploadName || "";
+}
+
 function renderUploadedFiles(files) {
   uploadedFiles = Array.isArray(files) ? files : [];
   if (selectedUploadName && !uploadedFiles.some((file) => file.name === selectedUploadName)) {
     selectedUploadName = null;
     syncAudioDropHint();
   }
+  populatePreviousUploadOptions();
   refs.uploadedFilesList.replaceChildren();
   if (!uploadedFiles.length) {
     const empty = document.createElement("p");
@@ -386,6 +445,19 @@ function renderUploadedFiles(files) {
   syncUploadedFileActions();
 }
 
+function getTranscriptDisplayText(state, display) {
+  if (!showingVerbatimTranscript) return display.transcript || "";
+  if (state.raw_transcript_output) return state.raw_transcript_output;
+  if (state.status === "Running") return "Transcription running...";
+  if (!state.status || state.status === "Idle") return "Ready.";
+  return "Verbatim transcript not available.";
+}
+
+function toggleVerbatimTranscriptView() {
+  showingVerbatimTranscript = !showingVerbatimTranscript;
+  if (latestState) renderState(latestState);
+}
+
 function renderState(state) {
   const signature = buildStateSignature(state);
   if (signature !== lastStateSignature) {
@@ -400,10 +472,13 @@ function renderState(state) {
 
   setStatusBadge(state.status || "Idle");
   refs.noticeText.textContent = getRunControlNotice(state);
-  refs.transcriptOutput.value = display.transcript || "";
+  refs.transcriptOutput.value = getTranscriptDisplayText(state, display);
   refs.summaryOutput.value = display.summary || "";
   resizeResultOutputs();
   refs.logOutput.textContent = state.log_tail || "No log output yet.";
+
+  refs.toggleVerbatimBtn.textContent = showingVerbatimTranscript ? "View Clean" : "View Verbatim";
+  refs.toggleVerbatimBtn.setAttribute("aria-pressed", String(showingVerbatimTranscript));
 
   refs.metricStatus.textContent = state.status || "Idle";
   refs.metricRuntime.textContent = formatRuntime(state.started_at, state.completed_at);
@@ -422,9 +497,9 @@ function renderState(state) {
   setChecklistState(refs.checkExport, hasExports);
 
   latestArtifactUrls = {
-    pdf: display.pdfUrl,
-    docx: display.docxUrl,
-    json: display.jsonUrl,
+    pdf: { clean: display.pdfUrl, verbatim: display.pdfVerbatimUrl },
+    docx: { clean: display.docxUrl, verbatim: display.docxVerbatimUrl },
+    json: { clean: display.jsonUrl, verbatim: display.jsonVerbatimUrl },
     bundle: state.bundle_output ? "/api/download/bundle" : null,
   };
   renderArtifactSelection(running);
@@ -603,6 +678,17 @@ async function loadUploads() {
   }
 }
 
+async function refreshUploadedFilesSilently() {
+  try {
+    const response = await fetch("/api/uploads");
+    if (!response.ok) return;
+    const data = await response.json();
+    renderUploadedFiles(data.files || []);
+  } catch {
+    // no-op: this is a background refresh, surfaced errors would be noisy
+  }
+}
+
 async function toggleUploadManager() {
   if (refs.uploadManagerPanel.hidden) {
     refs.uploadManagerPanel.hidden = false;
@@ -686,7 +772,7 @@ async function submitRun(event) {
       state = await response.json();
     }
     renderState(state);
-    if (!refs.uploadManagerPanel.hidden) await loadUploads();
+    await refreshUploadedFilesSilently();
   } catch (error) {
     refs.noticeText.textContent = String(error.message || error);
   }
@@ -781,6 +867,7 @@ async function initialLoad() {
   } catch {
     // no-op
   }
+  await refreshUploadedFilesSilently();
 }
 
 refs.runForm.addEventListener("submit", submitRun);
@@ -856,12 +943,31 @@ refs.lookupInput.addEventListener("keydown", (event) => {
   }
 });
 refs.copyTranscriptBtn.addEventListener("click", copyTranscript);
+refs.toggleVerbatimBtn.addEventListener("click", toggleVerbatimTranscriptView);
 refs.languageSelect.addEventListener("change", () => {
   if (latestState) renderState(latestState);
+});
+refs.artifactDownloadLink.addEventListener("click", (event) => {
+  if (refs.artifactDownloadLink.dataset.mode === "build") {
+    event.preventDefault();
+    if (!refs.artifactDownloadLink.classList.contains("disabled")) buildBundle();
+  }
 });
 refs.artifactSelect.addEventListener("change", () => {
   const running = latestState && latestState.status === "Running";
   renderArtifactSelection(Boolean(running));
+});
+refs.artifactVerbatimToggle.addEventListener("change", () => {
+  const running = latestState && latestState.status === "Running";
+  renderArtifactSelection(Boolean(running));
+});
+refs.previousUploadSelect.addEventListener("change", () => {
+  const fileName = refs.previousUploadSelect.value;
+  if (fileName) {
+    selectUploadedFile(fileName);
+  } else {
+    clearSelectedUpload();
+  }
 });
 refs.tabButtons.forEach((button) => {
   button.addEventListener("click", () => activateTab(button.dataset.tab));

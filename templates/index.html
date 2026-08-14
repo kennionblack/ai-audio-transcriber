@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260506-upload-icon-colors">
+  <link rel="stylesheet" href="/static/styles.css?v=20260805-previous-upload-select">
 </head>
 <body>
   <header class="site-header" aria-label="Site header">
@@ -61,6 +61,12 @@
               <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac,.mp4">
               <p id="audioDropHint" class="file-drop-hint">Or drag and drop an audio file here.</p>
             </div>
+          </label>
+          <label class="field">
+            <span>Rerun a Previous Upload</span>
+            <select id="previousUploadSelect">
+              <option value="">Select an uploaded file...</option>
+            </select>
           </label>
           <label class="field">
             <span>Output Language</span>
@@ -127,6 +133,10 @@
       <section class="panel artifacts">
         <h2>Artifact Center</h2>
         <p class="artifact-note">Select an artifact type, then download the currently available file.</p>
+        <label class="select-all-row artifact-verbatim-toggle">
+          <input id="artifactVerbatimToggle" type="checkbox">
+          <span>Verbatim (raw transcript)</span>
+        </label>
         <label class="field artifact-field">
           <span>Artifact Type</span>
           <select id="artifactSelect">
@@ -231,6 +241,7 @@
         <div class="tab-panel active" id="tab-transcript">
           <div class="toolbar">
             <button type="button" id="copyTranscriptBtn">Copy Transcript</button>
+            <button type="button" id="toggleVerbatimBtn" aria-pressed="false">View Verbatim</button>
             <span id="copyToast"></span>
           </div>
           <textarea id="transcriptOutput" readonly></textarea>
@@ -260,6 +271,6 @@
     <p class="footer-links">Privacy Notice | Cookie Preferences</p>
   </footer>
 
-  <script src="/static/app.js?v=20260506-upload-icon-colors" defer></script>
+  <script src="/static/app.js?v=20260805-previous-upload-select" defer></script>
 </body>
 </html>

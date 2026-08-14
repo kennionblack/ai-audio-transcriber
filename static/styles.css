@@ -708,6 +708,7 @@ button.danger {
   border-radius: 10px;
   background: var(--surface-soft);
   padding: 0.52rem 0.58rem;
+  min-width: 0;
 }
 
 .ops-label {
@@ -722,6 +723,7 @@ button.danger {
   margin: 0.2rem 0 0;
   font-weight: 700;
   font-size: 0.89rem;
+  overflow-wrap: anywhere;
 }
 
 .operations h3 {
@@ -851,6 +853,12 @@ button.danger {
 
 .artifact-field {
   margin-bottom: 0.58rem;
+}
+
+.artifact-verbatim-toggle {
+  margin-bottom: 0.6rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .artifact-status-card {

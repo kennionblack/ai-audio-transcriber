@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -67,12 +68,17 @@ class TranscriptContext:
     min_bullets: int = 3
     max_bullets: int = 15
 
+    # Tracks when the raw transcript was stored, purely for elapsed-time logging around cleaning.
+    _raw_transcript_set_at: float | None = field(default=None, repr=False)
+
     def set_raw_transcript(self, text: str) -> list[str] | None:
         errors = _validate_transcript(text)
         if errors:
             return errors
         self.raw_transcript = text
+        self._raw_transcript_set_at = time.monotonic()
         print_verbose("[context] raw_transcript stored")
+        emit_event("raw_transcript_ready", transcript=text)
         return None
 
     def get_raw_transcript(self) -> str:
@@ -85,6 +91,9 @@ class TranscriptContext:
         if errors:
             return errors
         self.cleaned_transcript = text
+        if self._raw_transcript_set_at is not None:
+            elapsed = time.monotonic() - self._raw_transcript_set_at
+            print_verbose(f"[context] cleaning + summary generation finished in {elapsed:.1f}s")
         print_verbose("[context] cleaned_transcript stored")
         emit_event("transcript_ready", transcript=text)
         return None
@@ -123,9 +132,28 @@ class TranscriptContext:
             )
             for format_name, out_path in artifact_paths.items():
                 print_verbose(f"[context] {format_name} output written to {out_path}")
+
+            verbatim_artifact_paths: dict[str, Path] = {}
+            if self.raw_transcript:
+                verbatim_artifact_paths = write_outputs(
+                    output_dir=OUTPUT_DIR,
+                    stem=f"{stem}_verbatim",
+                    cleaned_transcript=None,
+                    summary=list(self.summary),
+                    metadata=dict(self.metadata),
+                    audio_filename=self.audio_filename,
+                    raw_transcript=self.raw_transcript,
+                    title="Audio Transcription Output (Verbatim)",
+                )
+                for format_name, out_path in verbatim_artifact_paths.items():
+                    print_verbose(f"[context] verbatim {format_name} output written to {out_path}")
+
             emit_event(
                 "export_files_ready",
                 export_files={format_name: str(out_path) for format_name, out_path in artifact_paths.items()},
+                verbatim_export_files={
+                    format_name: str(out_path) for format_name, out_path in verbatim_artifact_paths.items()
+                },
             )
         except Exception as exc:
             print_verbose(f"[context] output write failed: {exc}")

@@ -10,6 +10,10 @@ An end-to-end, multi-agent pipeline that turns raw audio input into structured q
   - macOS: `brew install ffmpeg`
   - Windows: [download from ffmpeg.org](https://ffmpeg.org/download.html)
 - **OpenAI API key** with access to the Chat/Responses API and access to the `gpt-5-mini` model
+- **Hugging Face access token** (optional) — enables real speaker diarization for multi-speaker audio (interviews, conversations). Without it, the transcript is produced without speaker labels and the cleaner falls back to inferring turns from context. To enable it:
+  1. Create a free account at [huggingface.co](https://huggingface.co).
+  2. Accept the user conditions on [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) and [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0).
+  3. Generate a read-scoped token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 
 ## Environment setup
 
@@ -19,6 +23,7 @@ Secrets are loaded from a `.env` file at the project root. Create one and add yo
 
 ```bash
 echo "OPENAI_API_KEY=your_api_key_here" >> .env
+echo "HF_TOKEN=your_hugging_face_token_here" >> .env  # optional, enables speaker diarization
 ```
 
 ## Usage

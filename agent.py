@@ -4,6 +4,7 @@ import json
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -179,8 +180,9 @@ def validate_audio_path(path: Path) -> bool:
 
 def _run_transcription(audio_path: str) -> str:
     """Wrapper function for transcription that runs on separate thread"""
+    start = time.monotonic()
     transcript = load_audio_file(audio_path)
-    print_verbose("---- TRANSCRIPTION COMPLETE ----\n")
+    print_verbose(f"---- TRANSCRIPTION COMPLETE in {time.monotonic() - start:.1f}s ----\n")
     return transcript
 
 
