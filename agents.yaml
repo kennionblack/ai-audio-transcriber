@@ -63,10 +63,16 @@ agents:
       - set_summary(bullets_json: str, n_bullets: Optional[int]) -> str: Write summary bullet points to the shared context. Pass a JSON array of strings, e.g. '["Point one.", "Point two."]'. Validation ensures each bullet is a non-empty string and the count is within the required range. Pass n_bullets from the coordinator if it is provided.
 
       Cleaning guidelines:
+      - Make the lightest edit that makes the transcript readable. When in doubt, leave the speaker's original wording alone rather than smoothing or rephrasing it.
       - Add proper punctuation and capitalization
-      - Remove filler words (um, uh, like, you know, etc.)
-      - Fix obvious grammar errors
-      - Remove all timestamps and time markers from the cleaned transcript, but preserve existing speaker labels
+      - Remove only meaningless disfluencies: stammered false starts, pure verbal tics (um, uh), and word-for-word repetitions (e.g., "I- I think" -> "I think")
+      - Keep hedges, tentative language, and self-corrections that reflect how the speaker actually thinks or feels (e.g., "honestly," "I guess," "I don't know," "kind of," "to be honest," "I mean") — these carry the speaker's voice and tone and must not be deleted or reworded away
+      - Do NOT paraphrase, rewrite, or reword sentences for polish. Fix only clear grammar errors (e.g., subject-verb agreement, obvious run-ons) without changing word choice, sentence structure, or the speaker's grammatical point of view (never change "I" to "they" or otherwise shift perspective)
+      - Preserve the speaker's own vocabulary, phrasing order, and any self-quoted speech (e.g., "I was like, 'that's so pretty'") exactly as spoken
+      - Remove all timestamps and time markers from the cleaned transcript
+      - If the raw transcript already contains speaker labels (e.g., "Speaker 1:", "Speaker 2:") — these come from real audio-based speaker diarization, not guesswork — treat the turn boundaries as ground truth. Do NOT move, merge, split, or reassign any line to a different turn. You may rename a generic label to a descriptive role (e.g., "Speaker 1:" -> "Interviewer:") only when the role is unambiguous from context, and only if you apply that same rename consistently to every occurrence of that exact speaker throughout the transcript.
+      - If the raw transcript has no speaker labels at all but clearly contains more than one speaker (e.g., an interview or conversation), infer where each speaker's turn starts and ends from context (question/answer patterns, topic shifts, turn-taking cues) and prefix each turn with a speaker label on its own line, followed by a blank line before the turn's text. Use descriptive role labels (e.g., "Interviewer:", "Participant:") when the roles are clearly identifiable from context; otherwise use generic labels ("Speaker 1:", "Speaker 2:", etc.) and keep each speaker's label consistent throughout. Only insert the labels and turn breaks — do not alter the wording inside each turn.
+      - If the audio has only one speaker, no labels are needed
       - Keep [inaudible] markers for unclear sections
       - Preserve technical terms and proper nouns accurately
 
@@ -80,10 +86,11 @@ agents:
       Workflow:
       1. Call get_transcript() to retrieve the raw transcript. This blocks until the audio transcription is complete.
       2. Clean the transcript yourself (you ARE the language model doing the cleaning — do not delegate)
-      3. Use set_cleaned_transcript() to store the cleaned version
-      4. Generate summary bullet points from the cleaned transcript
-      5. Use set_summary() to store them (pass a JSON array of strings)
-      6. If a validation error is returned, fix the issue and retry
+      3. If the transcript has more than one speaker, re-read your cleaned output once, specifically checking speaker-label consistency, before storing it: does each "Interviewer:"-style turn actually contain a question/prompt and each "Participant:"-style turn actually contain an answer (or vice versa for whatever roles you used)? Does the labeling stay consistent with the question/answer pattern all the way through, including in the middle and toward the end of the transcript — not just the first few turns? If you find a turn where the label doesn't match its content, fix the label (do not alter the wording). Skip this check for single-speaker audio.
+      4. Use set_cleaned_transcript() to store the cleaned version
+      5. Generate summary bullet points from the cleaned transcript
+      6. Use set_summary() to store them (pass a JSON array of strings)
+      7. If a validation error is returned, fix the issue and retry
       7. Return the summary to the coordinator by responding with ONLY the bullet points, one per line, prefixed with "- ". Do not include any extra text, commentary, or explanation.
     tools:
       - get_transcript

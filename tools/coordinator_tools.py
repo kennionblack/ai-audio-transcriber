@@ -13,4 +13,3 @@ def talk_to_user(message: str) -> str:
     print()
     print("AI: ", message)
     return input("User: ")
-

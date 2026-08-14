@@ -6,8 +6,11 @@ __pycache__
 # generated output files
 /output/*
 !/output/.gitkeep
+/uploads/*
+!/uploads/.gitkeep
 
 logs/*
 
 .pytest_cache
 .vscode/
+results.json

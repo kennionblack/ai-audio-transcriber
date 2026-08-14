@@ -16,19 +16,22 @@ class Config(TypedDict):
     main: str
 
 
-def load_config(config_path: Path="agents.yaml") -> Config:
+def load_config(config_path: Path = "agents.yaml") -> Config:
     ext = config_path.suffix.lower()
-    if ext in ['.yaml', '.yml']:
+    if ext in [".yaml", ".yml"]:
         import yaml
+
         return yaml.safe_load(config_path.read_text())
 
-    elif ext in ['.json']:
+    elif ext in [".json"]:
         import json
+
         return json.loads(config_path.read_text())
 
-    elif ext in ['.md', '.mdd']:
+    elif ext in [".md", ".mdd"]:
         import markdowndata
+
         return markdowndata.loads(config_path.read_text())
 
     else:
-        raise NotImplementedError(f'Unsupported config format: {config_path.suffix}')
+        raise NotImplementedError(f"Unsupported config format: {config_path.suffix}")

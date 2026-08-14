@@ -11,6 +11,7 @@ from tools.transcription import load_audio_file
 
 base_dir = Path(__file__).resolve().parents[1]
 
+
 @pytest.fixture
 def mock_openai():
     with patch("agent.client") as mock_client:
@@ -32,6 +33,7 @@ def cleaner_agent(agents):
 @pytest.fixture
 def coordinator_agent(agents):
     return agents["coordinator"]
+
 
 async def run_and_get_called_tools(
     agent,
@@ -142,4 +144,3 @@ async def test_coordinator_delegates_to_cleaner(mock_openai, coordinator_agent):
     assert "cleaner" in called_tools
     # Coordinator must NOT call get_transcript directly
     assert "get_transcript" not in called_tools
-

@@ -72,13 +72,8 @@ def generate_function_schema(func: Callable[..., Any]) -> FunctionToolParam:
         "type": "function",
         "name": func.__name__,
         "description": func.__doc__ or "",
-        "parameters": {
-            "type": "object",
-            "properties": params,
-            "required": required,
-            "additionalProperties": False
-        },
-        "strict": True
+        "parameters": {"type": "object", "properties": params, "required": required, "additionalProperties": False},
+        "strict": True,
     }
 
 
@@ -113,6 +108,7 @@ class ToolBox:
         self._tools.append(generate_function_schema(func))
 
         if inspect.iscoroutinefunction(func):
+
             async def safe_func(*args, **kwargs):
                 try:
                     return await func(*args, **kwargs)
@@ -122,6 +118,7 @@ class ToolBox:
                     return traceback.format_exc()
 
         else:
+
             def safe_func(*args, **kwargs):
                 try:
                     return func(*args, **kwargs)
@@ -134,7 +131,7 @@ class ToolBox:
         return func
 
     def get_tools(self, tool_names: list[str]):
-        return [tool for tool in self._tools if tool['name'] in set(tool_names)]
+        return [tool for tool in self._tools if tool["name"] in set(tool_names)]
 
     async def run_tool(self, tool_name: str, **kwargs):
         tool = self._funcs.get(tool_name)
@@ -148,7 +145,7 @@ class ToolBox:
         async def function(message: str) -> str:
             return await run_agent(agent, self, message)
 
-        function.__name__ = agent['name']
-        function.__doc__ = agent['description']
+        function.__name__ = agent["name"]
+        function.__doc__ = agent["description"]
 
         self.tool(function)
