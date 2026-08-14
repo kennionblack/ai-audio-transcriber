@@ -255,10 +255,11 @@ h3 {
 .site-footer {
   margin-top: 0.95rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 0.42rem;
+  flex-wrap: wrap;
+  gap: 0.42rem 1rem;
   text-align: center;
   background: #002e5d;
   color: #ffffff;
@@ -266,6 +267,14 @@ h3 {
   border: 0;
   box-shadow: none;
   padding: 1rem 1rem 0.92rem;
+}
+
+.footer-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.42rem;
+  flex: 1 1 auto;
 }
 
 .footer-meta {
@@ -282,6 +291,16 @@ h3 {
   font-size: clamp(0.82rem, 1.8vw, 1.03rem);
   line-height: 1.35;
   font-weight: 600;
+}
+
+.footer-refresh {
+  margin: 0;
+  color: #d6e5f8;
+  font-size: 0.78rem;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: auto;
 }
 
 .left-column,
@@ -400,13 +419,72 @@ h3 {
   box-shadow: 0 0 0 2px rgba(43, 99, 203, 0.16);
 }
 
+.file-dropzone.has-file {
+  border-color: #1f9d63;
+  border-style: solid;
+  background: #f2fbf6;
+}
+
 .file-dropzone:focus-visible {
   outline: 2px solid #3f74cf;
   outline-offset: 1px;
 }
 
-.file-dropzone input[type="file"] {
+.file-input-visual {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.file-choose-btn-visual {
+  display: inline-block;
+  flex-shrink: 0;
+  border: 1px solid #c7d7f2;
+  border-radius: 6px;
+  background: #edf3ff;
+  color: #214fa6;
+  padding: 0.24rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 33, 59, 0.12);
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.file-choose-btn-visual.has-file {
+  background: #1f9d63;
+  border-color: #17804f;
+  color: #ffffff;
+}
+
+.file-input-overlay:hover ~ .file-choose-btn-visual {
+  background: #214fa6;
+  border-color: #214fa6;
+  color: #ffffff;
+  box-shadow: 0 2px 5px rgba(15, 33, 59, 0.22);
+}
+
+.file-input-overlay:hover ~ .file-choose-btn-visual.has-file {
+  background: #17804f;
+  border-color: #147447;
+}
+
+.file-status-text {
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.file-input-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
 }
 
 .file-drop-hint {
@@ -426,6 +504,19 @@ textarea {
   font-size: 0.9rem;
   color: var(--text);
   background: #fdfefe;
+}
+
+select {
+  cursor: pointer;
+  font-size: 0.76rem;
+  background: var(--surface-soft);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+select:hover,
+select:focus-visible {
+  background: #eaf0ff;
+  border-color: #c7d7f2;
 }
 
 .button-row {
@@ -506,7 +597,9 @@ button.primary:focus-visible {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(29, 41, 64, 0.6);
+  background: rgba(29, 41, 64, 0.5);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 .upload-manager[hidden] {
@@ -519,10 +612,26 @@ button.primary:focus-visible {
   max-height: min(34rem, calc(100vh - 2rem));
   overflow: hidden;
   padding: 0.92rem;
-  background-color: rgba(255, 255, 255, 0.4);
-  border-color: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 22px 54px rgba(10, 20, 38, 0.32);
-  backdrop-filter: blur(12px);
+  border-radius: 24px;
+  background-color: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.95), inset 0 -14px 24px -16px rgba(255, 255, 255, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.15), 0 24px 60px rgba(10, 20, 38, 0.4);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+}
+
+.upload-manager-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.12) 32%, rgba(255, 255, 255, 0) 58%);
+  pointer-events: none;
+}
+
+.upload-manager-card > *:not(.delete-confirm-popup) {
+  position: relative;
 }
 
 .upload-manager-card h2 {
@@ -566,7 +675,7 @@ button.primary:focus-visible {
 
 #refreshUploadsBtn {
   border-color: var(--line);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.65);
   color: #1f9d63;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -580,7 +689,7 @@ button.primary:focus-visible {
 
 #closeUploadManagerBtn {
   border-color: var(--line);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.65);
   color: #c94333;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -667,7 +776,7 @@ button.primary:focus-visible {
 
 #refreshHistoryBtn {
   border-color: transparent;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.65);
   color: #1f9d63;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -681,7 +790,7 @@ button.primary:focus-visible {
 
 #closeHistoryBtn {
   border-color: transparent;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.65);
   color: #c94333;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }

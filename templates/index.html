@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=20260814-bold-hover-everywhere">
+  <link rel="stylesheet" href="/static/styles.css?v=20260814-select-smaller-text">
 </head>
 <body>
   <header class="site-header" aria-label="Site header">
@@ -30,7 +30,6 @@
         </div>
         <div class="meta-status">
           <span id="wsBadge" class="ws-badge connecting">Connecting</span>
-          <span id="lastRefreshText">Last refresh: --</span>
         </div>
       </div>
     </div>
@@ -58,7 +57,11 @@
           <label class="field">
             <span>Audio File</span>
             <div id="audioDropZone" class="file-dropzone" tabindex="0" role="button" aria-label="Choose or drop an audio file">
-              <input id="audioFileInput" type="file" accept=".mp3,.wav,.m4a,.flac,.mp4">
+              <div class="file-input-visual">
+                <input id="audioFileInput" class="file-input-overlay" type="file" accept=".mp3,.wav,.m4a,.flac,.mp4">
+                <span id="fileChooseBtnVisual" class="file-choose-btn-visual">Choose File</span>
+                <span id="fileStatusText" class="file-status-text">No file chosen</span>
+              </div>
               <p id="audioDropHint" class="file-drop-hint">Or drag and drop an audio file here.</p>
             </div>
           </label>
@@ -329,10 +332,13 @@
   </main>
 
   <footer class="site-footer" aria-label="Site footer">
-    <p class="footer-meta">Provo, UT 84602, USA | 801-000-0123 | &copy; 2026 All Rights Reserved</p>
-    <p class="footer-links">Privacy Notice | Cookie Preferences</p>
+    <div class="footer-main">
+      <p class="footer-meta">Provo, UT 84602, USA | 801-000-0123 | &copy; 2026 All Rights Reserved</p>
+      <p class="footer-links">Privacy Notice | Cookie Preferences</p>
+    </div>
+    <p id="lastRefreshText" class="footer-refresh">Last refresh: --</p>
   </footer>
 
-  <script src="/static/app.js?v=20260814-bold-hover-everywhere" defer></script>
+  <script src="/static/app.js?v=20260814-select-smaller-text" defer></script>
 </body>
 </html>

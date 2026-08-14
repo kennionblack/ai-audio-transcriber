@@ -7,6 +7,8 @@ const refs = {
   audioFileInput: document.getElementById("audioFileInput"),
   audioDropZone: document.getElementById("audioDropZone"),
   audioDropHint: document.getElementById("audioDropHint"),
+  fileChooseBtnVisual: document.getElementById("fileChooseBtnVisual"),
+  fileStatusText: document.getElementById("fileStatusText"),
   languageSelect: document.getElementById("languageSelect"),
   previousUploadSelect: document.getElementById("previousUploadSelect"),
   clearBtn: document.getElementById("clearBtn"),
@@ -71,7 +73,6 @@ const refs = {
 let latestState = null;
 let socket = null;
 let connectionState = "connecting";
-let lastStateSignature = null;
 let lastRefreshAt = null;
 let uploadedFiles = [];
 let selectedUploadName = null;
@@ -130,31 +131,6 @@ function formatBytes(value) {
     unitIndex += 1;
   }
   return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[unitIndex]}`;
-}
-
-function buildStateSignature(state) {
-  const timeline = Array.isArray(state.timeline) ? state.timeline : [];
-  const lastTimeline = timeline.length ? timeline[timeline.length - 1] : null;
-  return JSON.stringify({
-    status: state.status || "",
-    notice: state.notice || "",
-    started_at: state.started_at || "",
-    completed_at: state.completed_at || "",
-    active_audio_name: state.active_audio_name || "",
-    translate_lang: state.translate_lang || "",
-    output: state.output || "",
-    transcription_output: state.transcription_output || "",
-    raw_transcript_output: state.raw_transcript_output || "",
-    summary_output: state.summary_output || "",
-    translations: state.translations || {},
-    translated_summaries: state.translated_summaries || {},
-    pdf_output: state.pdf_output || "",
-    export_files: state.export_files || {},
-    verbatim_export_files: state.verbatim_export_files || {},
-    bundle_output: state.bundle_output || "",
-    log_tail: state.log_tail || "",
-    last_timeline: lastTimeline,
-  });
 }
 
 function countWords(text) {
@@ -478,11 +454,7 @@ function toggleVerbatimTranscriptView() {
 }
 
 function renderState(state) {
-  const signature = buildStateSignature(state);
-  if (signature !== lastStateSignature) {
-    lastStateSignature = signature;
-    lastRefreshAt = new Date();
-  }
+  lastRefreshAt = new Date();
 
   latestState = state;
   const display = buildDisplayState(state);
@@ -567,10 +539,16 @@ function setAudioDropDragging(active) {
 function syncAudioDropHint() {
   if (!refs.audioDropHint) return;
   const file = refs.audioFileInput.files && refs.audioFileInput.files[0];
+  const hasSelection = Boolean(file) || Boolean(selectedUploadName);
+  if (refs.audioDropZone) refs.audioDropZone.classList.toggle("has-file", hasSelection);
+  if (refs.fileChooseBtnVisual) refs.fileChooseBtnVisual.classList.toggle("has-file", hasSelection);
+
   if (selectedUploadName) {
+    if (refs.fileStatusText) refs.fileStatusText.textContent = "File selected";
     refs.audioDropHint.textContent = `Selected uploaded file: ${selectedUploadName}`;
     return;
   }
+  if (refs.fileStatusText) refs.fileStatusText.textContent = file ? file.name : "No file chosen";
   refs.audioDropHint.textContent = file ? `Selected file: ${file.name}` : "Or drag and drop an audio file here.";
 }
 
